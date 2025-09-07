@@ -15,22 +15,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # --- PERBAIKAN: Menginstal TA-Lib secara manual dari sumber ---
-    - name: Install TA-Lib from source
-      run: |
-        # Mengunduh kode sumber TA-Lib
-        wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-        # Mengekstrak file
-        tar -xzf ta-lib-0.4.0-src.tar.gz
-        # Masuk ke direktori
-        cd ta-lib/
-        # Mengkonfigurasi build
-        ./configure --prefix=/usr
-        # Mengkompilasi kode
-        make
-        # Menginstal ke sistem
-        sudo make install
-
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
