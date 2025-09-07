@@ -25,7 +25,7 @@ CANDLE_COUNT_FOR_GEMINI = 100 # Jumlah candle per timeframe untuk dianalisis
 
 # Atur ke True untuk hanya mengambil data dan mengirim laporan status fetch ke Telegram.
 # Mode debug sekarang akan mengirim 5 baris data mentah terakhir per timeframe.
-DEBUG_FETCH_ONLY = True
+DEBUG_FETCH_ONLY = False
 
 LAST_SIGNAL_FILE = "last_signal.txt"
 
