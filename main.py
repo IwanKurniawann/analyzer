@@ -19,7 +19,7 @@ from datetime import datetime
 import pytz
 
 # --- KONFIGURASI ---
-SYMBOL = 'SOL/USDT'
+SYMBOL = 'BTC/USDT'
 TIMEFRAMES = ['1d', '4h', '1h', '15m']
 CANDLE_COUNT_FOR_GEMINI = 100 # Jumlah candle per timeframe untuk dianalisis
 
