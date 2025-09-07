@@ -98,7 +98,7 @@ def format_data_for_gemini(all_data, sr_levels=None, all_ta_indicators=None):
     # Menambahkan data mentah
     for tf, df in all_data.items():
         if df is not None and not df.empty:
-            df_subset = df.copy().tail(60) # Mengirim 60 candle terakhir agar tidak terlalu panjang
+            df_subset = df.copy().tail(100) # Mengirim 60 candle terakhir agar tidak terlalu panjang
             df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
             report += f"--- Data Harga Timeframe: {tf} ---\n"
             report += df_subset.to_string(index=False)
