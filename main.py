@@ -130,7 +130,7 @@ def get_gemini_analysis(price_data_report):
         print("Menghubungi Google Gemini untuk analisis komprehensif...")
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(
-            'gemini-2.5-turbo',
+            'gemini-2.0-flash',
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
         )
         
