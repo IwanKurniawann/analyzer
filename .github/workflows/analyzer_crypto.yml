@@ -15,6 +15,16 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    # --- DIKEMBALIKAN: Menginstal TA-Lib secara manual dari sumber ---
+    - name: Install TA-Lib from source
+      run: |
+        wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+        tar -xzf ta-lib-0.4.0-src.tar.gz
+        cd ta-lib/
+        ./configure --prefix=/usr
+        make
+        sudo make install
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:

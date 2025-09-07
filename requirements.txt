@@ -1,5 +1,7 @@
 ccxt
 pandas
 python-telegram-bot
-google-generativeai
 pytz
+google-generativeai
+pandas-ta
+TA-Lib
