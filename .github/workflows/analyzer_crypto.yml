@@ -18,8 +18,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        # --- PERUBAHAN DI SINI ---
-        # Menggunakan Python 3.12 yang kompatibel dengan versi terbaru pandas-ta
+        # Menggunakan Python 3.12 yang kompatibel dengan dependensi terbaru
         python-version: '3.12'
 
     - name: Install dependencies
@@ -31,5 +30,6 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Menambahkan API Key Gemini
       run: python main.py
 
