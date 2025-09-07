@@ -4,3 +4,4 @@ pandas-ta
 python-telegram-bot
 google-generativeai
 pytz
+TA-Lib

@@ -15,10 +15,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    # --- LANGKAH BARU: Instal TA-Lib ---
+    - name: Install TA-Lib
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libta-lib-dev
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        # Menggunakan Python 3.12 yang kompatibel dengan dependensi terbaru
         python-version: '3.12'
 
     - name: Install dependencies
@@ -30,6 +35,6 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Menambahkan API Key Gemini
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python main.py
 
