@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Skrip utama untuk menganalisis data harga BTC/USDT menggunakan Google Gemini,
-dan mengirim notifikasi sinyal trading ke Telegram.
-Strategi ini sepenuhnya digerakkan oleh analisis AI.
+Skrip utama untuk menganalisis data harga BTC/USDT menggunakan Google Gemini
+dengan pendekatan multi-timeframe (1D, 4H, 1H, 15M) untuk menghasilkan
+rencana trading yang komprehensif (Entry, TP, SL).
 """
 
 import os
@@ -13,13 +13,14 @@ import pandas as pd
 import asyncio
 import telegram
 import google.generativeai as genai
+import json
 from datetime import datetime
 import pytz
 
 # --- KONFIGURASI ---
 SYMBOL = 'SOL/USDT'
-TIMEFRAME = '4h' # Timeframe yang akan dianalisis oleh Gemini
-CANDLE_COUNT_FOR_GEMINI = 50 # Jumlah candle terakhir yang akan dikirim ke AI
+TIMEFRAMES = ['1d', '4h', '1h', '15m']
+CANDLE_COUNT_FOR_GEMINI = 100 # Jumlah candle per timeframe untuk dianalisis
 
 LAST_SIGNAL_FILE = "last_signal.txt"
 
@@ -37,97 +38,125 @@ def check_credentials():
         print("Error: Pastikan GEMINI_API_KEY sudah diatur di GitHub Secrets.")
         sys.exit(1)
 
-def fetch_data(symbol, timeframe, limit):
-    """
-    Mengambil data OHLCV dari KuCoin menggunakan ccxt.
-    """
-    try:
-        print(f"Mengambil {limit} data candle terakhir untuk {symbol} pada timeframe {timeframe} dari KuCoin...")
-        exchange = ccxt.kucoin() 
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-        
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        print("Data berhasil diambil.")
-        return df
-    except Exception as e:
-        print(f"Error saat mengambil data dari bursa: {e}")
-        return None
+async def fetch_all_data(symbol, timeframes, limit):
+    """Mengambil data OHLCV untuk semua timeframe yang ditentukan."""
+    all_data = {}
+    exchange = ccxt.kucoin()
+    for tf in timeframes:
+        try:
+            print(f"Mengambil {limit} data candle terakhir untuk {symbol} pada timeframe {tf}...")
+            ohlcv = await asyncio.to_thread(exchange.fetch_ohlcv, symbol, timeframe=tf, limit=limit)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            all_data[tf] = df
+            print(f"Data untuk timeframe {tf} berhasil diambil.")
+        except Exception as e:
+            print(f"Error saat mengambil data untuk timeframe {tf}: {e}")
+            all_data[tf] = None
+    return all_data
 
-def format_data_for_gemini(df):
-    """Mengubah data DataFrame menjadi format teks yang bisa dibaca AI."""
-    df_subset = df.tail(CANDLE_COUNT_FOR_GEMINI).copy()
-    df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
-    report = "Berikut adalah data harga OHLCV terbaru dalam format teks:\n\n"
-    report += df_subset.to_string(index=False)
+def format_data_for_gemini(all_data):
+    """Mengubah semua data DataFrame menjadi satu laporan teks komprehensif."""
+    report = "Berikut adalah data harga OHLCV terbaru untuk dianalisis:\n\n"
+    for tf, df in all_data.items():
+        if df is not None and not df.empty:
+            df_subset = df.copy()
+            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
+            report += f"--- Data Timeframe: {tf} ---\n"
+            report += df_subset.to_string(index=False)
+            report += "\n\n"
     return report
 
 def get_gemini_analysis(price_data_report):
     """
-    Mengirim data harga mentah ke Gemini dan meminta sinyal trading.
+    Mengirim laporan multi-timeframe ke Gemini dan meminta rencana trading dalam format JSON.
     """
     try:
-        print("Menghubungi Google Gemini untuk analisis pasar...")
+        print("Menghubungi Google Gemini untuk analisis komprehensif...")
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        generation_config = genai.GenerationConfig(
+            response_mime_type="application/json"
+        )
+        model = genai.GenerativeModel(
+            'gemini-2.0-flash',
+            generation_config=generation_config
+        )
         
         prompt = (
-            "Anda adalah seorang trader dan analis teknikal profesional dengan pengalaman 20 tahun di pasar cryptocurrency. "
-            "Tugas Anda adalah menganalisis data harga OHLCV mentah yang saya berikan untuk pasangan SOL/USDT pada timeframe 4 jam. "
-            "Fokus secara mendalam pada price action, pola candlestick yang terbentuk, momentum, volatilitas, serta potensi level support dan resistance kunci. "
-            "Berdasarkan analisis komprehensif Anda terhadap data berikut, berikan kesimpulan sinyal trading Anda HANYA dalam satu kata dari daftar berikut: 'STRONG_BUY', 'BUY', 'NEUTRAL', 'SELL', atau 'STRONG_SELL'. "
-            "Jangan memberikan penjelasan, justifikasi, atau kata-kata lain.\n\n"
-            f"{price_data_report}"
+            "Anda adalah seorang trader dan analis teknikal profesional dengan spesialisasi analisis top-down multi-timeframe. "
+            f"Tugas Anda adalah menganalisis data harga OHLCV mentah untuk {SYMBOL} yang saya berikan. "
+            "Lakukan analisis berikut:\n"
+            "1. Identifikasi tren utama dan struktur pasar pada timeframe tinggi (1D, 4H).\n"
+            "2. Cari potensi area support/resistance kunci, zona likuiditas, dan pola chart mayor.\n"
+            "3. Gunakan timeframe rendah (1H, 15M) untuk mencari konfirmasi, momentum, dan sinyal entry yang presisi.\n"
+            "4. Rangkum semua temuan Anda ke dalam satu rencana trading yang jelas.\n"
+            "Berdasarkan analisis komprehensif Anda, berikan output HANYA dalam format JSON yang valid. "
+            "JSON tersebut harus berisi kunci berikut:\n"
+            "- 'action': String ('Long', 'Short', atau 'Neutral')\n"
+            "- 'entry': Float (harga entri yang disarankan) atau String 'Market' jika entri segera.\n"
+            "- 'tp': Float (harga take profit).\n"
+            "- 'sl': Float (harga stop loss).\n"
+            "- 'reasoning': String (maksimal 2 kalimat singkat yang merangkum alasan utama, misal: 'Tren 1D bullish, 4H membentuk pola bull flag. Entri setelah penembusan di 1H.')\n"
+            "Jika tidak ada peluang trading yang jelas, atur 'action' ke 'Neutral' dan nilai numerik lainnya ke 0.\n\n"
+            f"Berikut adalah data pasarnya:\n{price_data_report}"
         )
         
         response = model.generate_content(prompt)
-        result = response.text.strip().upper()
-        print(f"Gemini Analysis Result: {result}")
-
-        valid_signals = ['STRONG_BUY', 'BUY', 'NEUTRAL', 'SELL', 'STRONG_SELL']
-        if result in valid_signals:
-            return result
-        else:
-            print(f"Peringatan: Gemini memberikan respons yang tidak valid: {result}")
-            return "NEUTRAL" # Anggap netral jika respons tidak sesuai
+        # Membersihkan output sebelum parsing JSON
+        cleaned_text = response.text.strip().replace('```json', '').replace('```', '')
+        analysis = json.loads(cleaned_text)
+        print(f"Gemini Analysis Result: {analysis}")
+        return analysis
             
     except Exception as e:
-        print(f"Error saat menghubungi Gemini API: {e}")
+        print(f"Error saat menghubungi atau mem-parsing respons Gemini: {e}")
         return None
 
-def format_signal_message(signal, current_price):
-    """Memformat pesan notifikasi sinyal trading dari AI."""
-    if signal == 'STRONG_BUY':
-        title = "🚨 **SINYAL AI: STRONG BUY** 🚨"
-        emoji = "🚀"
-    elif signal == 'STRONG_SELL':
-        title = "📉 **SINYAL AI: STRONG SELL** 📉"
-        emoji = "💥"
+def format_signal_message(analysis, current_price):
+    """Memformat pesan notifikasi rencana trading dari AI."""
+    action = analysis.get('action', 'N/A').upper()
+    entry = analysis.get('entry')
+    tp = analysis.get('tp', 0)
+    sl = analysis.get('sl', 0)
+    reasoning = analysis.get('reasoning', 'Tidak ada alasan spesifik.')
+
+    entry_price_str = f"${entry:,.2f}" if isinstance(entry, (int, float)) else "Market"
+    
+    if action == 'LONG':
+        title = f"📈 **SINYAL AI: LONG {SYMBOL}** 📈"
+    elif action == 'SHORT':
+        title = f"📉 **SINYAL AI: SHORT {SYMBOL}** 📉"
     else:
-        # Fungsi ini hanya dipanggil untuk sinyal kuat
-        return "Format pesan tidak valid."
+        return None
 
     message = (
         f"{title}\n\n"
-        f"{emoji} Gemini AI telah mendeteksi sinyal perdagangan kuat untuk **{SYMBOL}**.\n\n"
-        f"**Timeframe Analisis:** {TIMEFRAME.upper()}\n"
+        f"Gemini AI telah merumuskan rencana trading berdasarkan analisis multi-timeframe.\n\n"
         f"**Harga Saat Ini:** ${current_price:,.2f}\n\n"
+        f"**Rencana Trading:**\n"
+        f"  - **Entri:** {entry_price_str}\n"
+        f"  - **Take Profit (TP):** ${tp:,.2f}\n"
+        f"  - **Stop Loss (SL):** ${sl:,.2f}\n\n"
+        f"**Alasan Analisis:**\n"
+        f"_{reasoning}_\n\n"
         f"*Disclaimer: Ini bukan nasihat keuangan. Lakukan riset Anda sendiri.*"
     )
     return message
 
-def format_status_message(last_price, last_gemini_signal):
+def format_status_message(last_price, last_gemini_analysis):
     """Memformat pesan status harian."""
     tz = pytz.timezone('Asia/Jakarta')
     now = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+    reason = last_gemini_analysis.get('reasoning', 'Menunggu peluang trading yang jelas.')
     return (
         f"✅ **Bot Status: OK** ✅\n\n"
         f"Skrip analisis AI berhasil dijalankan pada:\n"
         f"**Waktu:** {now} WIB\n\n"
         f"**Status Pasar Terakhir:**\n"
         f"  - **Harga {SYMBOL}:** ${last_price:,.2f}\n"
-        f"  - **Sinyal AI Terakhir:** {last_gemini_signal}\n\n"
-        f"*Tidak ada sinyal trading KUAT yang baru.*"
+        f"  - **Kesimpulan AI:** {last_gemini_analysis.get('action', 'N/A').upper()} - _{reason}_\n\n"
+        f"*Tidak ada sinyal trading baru yang terdeteksi.*"
     )
 
 async def send_telegram_message(message):
@@ -151,35 +180,37 @@ async def main():
     check_credentials()
     signal_sent = False
     
-    df = fetch_data(SYMBOL, TIMEFRAME, CANDLE_COUNT_FOR_GEMINI)
-    if df is None or df.empty:
-        await send_telegram_message("❌ **Bot Error:** Gagal mengambil data pasar dari KuCoin. Cek log Actions.")
+    all_market_data = await fetch_all_data(SYMBOL, TIMEFRAMES, CANDLE_COUNT_FOR_GEMINI)
+    
+    # Memastikan data timeframe utama (4h) ada untuk harga terakhir
+    if all_market_data.get('4h') is None or all_market_data['4h'].empty:
+        await send_telegram_message("❌ **Bot Error:** Gagal mengambil data pasar utama (4h). Cek log Actions.")
         return
+    last_price = all_market_data['4h']['close'].iloc[-1]
 
-    last_price = df['close'].iloc[-1]
+    price_report = format_data_for_gemini(all_market_data)
+    analysis_result = get_gemini_analysis(price_report)
     
-    price_report = format_data_for_gemini(df)
-    current_signal = get_gemini_analysis(price_report)
-    
-    if current_signal is None:
+    if analysis_result is None:
         await send_telegram_message("❌ **Bot Error:** Gagal mendapatkan analisis dari Gemini AI. Cek log Actions.")
         return
 
-    # Hanya kirim notifikasi untuk sinyal yang dianggap kuat
-    if current_signal in ["STRONG_BUY", "STRONG_SELL"]:
+    current_action = analysis_result.get('action', 'Neutral').upper()
+
+    if current_action in ["LONG", "SHORT"]:
         last_signal = read_last_signal()
-        if current_signal != last_signal:
-            print(f"Sinyal kuat baru ({current_signal}) terdeteksi. Mengirim notifikasi...")
-            message = format_signal_message(current_signal, last_price)
+        if current_action != last_signal:
+            print(f"Sinyal baru ({current_action}) terdeteksi. Mengirim notifikasi...")
+            message = format_signal_message(analysis_result, last_price)
             await send_telegram_message(message)
-            write_last_signal(current_signal)
+            write_last_signal(current_action)
             signal_sent = True
         else:
-            print(f"Sinyal kuat saat ini ({current_signal}) sama dengan yang terakhir dikirim. Tidak ada notifikasi.")
+            print(f"Sinyal saat ini ({current_action}) sama dengan yang terakhir dikirim. Tidak ada notifikasi baru.")
 
     if not signal_sent:
-        print("Tidak ada sinyal kuat baru. Mengirim pesan status...")
-        status_message = format_status_message(last_price, current_signal)
+        print("Tidak ada sinyal trading baru. Mengirim pesan status...")
+        status_message = format_status_message(last_price, analysis_result)
         await send_telegram_message(status_message)
 
 if __name__ == "__main__":
