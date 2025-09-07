@@ -4,7 +4,8 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 */1 * * *' # Menjalankan setiap 4 jam
+    # Mengurangi frekuensi untuk tetap di bawah batas kuota gratis Gemini
+    - cron: '0 */1 * * *'
   workflow_dispatch: # Memungkinkan eksekusi manual
 
 jobs:
@@ -15,7 +16,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # --- DIKEMBALIKAN: Menginstal TA-Lib secara manual dari sumber ---
     - name: Install TA-Lib from source
       run: |
         wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
@@ -26,9 +26,22 @@ jobs:
         sudo make install
 
     - name: Set up Python
+      id: setup-python # Memberi ID pada langkah ini untuk referensi
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+
+    # --- LANGKAH BARU: Cache dependensi Python ---
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        # Lokasi direktori cache untuk pip
+        path: ~/.cache/pip
+        # Kunci unik untuk cache. Cache baru akan dibuat jika requirements.txt berubah.
+        key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-${{ hashFiles('**/requirements.txt') }}
+        # Kunci pemulihan jika kunci utama tidak ditemukan
+        restore-keys: |
+          ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-
 
     - name: Install dependencies
       run: |
