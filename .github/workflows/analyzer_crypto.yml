@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 */4 * * *' # Menjalankan setiap 4 jam
+    - cron: '0 */1 * * *' # Menjalankan setiap 4 jam
   workflow_dispatch: # Memungkinkan eksekusi manual
 
 jobs:
