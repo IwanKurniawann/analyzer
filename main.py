@@ -98,7 +98,6 @@ def format_data_for_gemini(all_data, sr_levels=None, all_ta_indicators=None):
             report += f"{level}: {value:,.2f}\n"
         report += "\n"
         
-    # --- PERUBAHAN: Sekarang melampirkan data harga mentah dari SEMUA timeframe ---
     print("Melampirkan data mentah dari semua timeframe untuk analisis AI...")
     for tf, df in all_data.items():
         if df is not None and not df.empty:
@@ -119,20 +118,21 @@ def get_gemini_analysis(technical_data_report):
         model = genai.GenerativeModel(
             'gemini-2.0-flash',
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
-        )  
+        )
+        
         prompt = (
-            f"Anda adalah seorang analis teknikal murni memiliki pemahaman mendalam tentang cryptocurrency. Tugas Anda adalah membuat rencana trading untuk {SYMBOL} hanya berdasarkan data teknis yang saya berikan.\n\n"
+            f"Anda adalah seorang analis teknikal murni berpandangan luas tanpa bias. Tugas Anda adalah membuat rencana trading untuk {SYMBOL} hanya berdasarkan data teknis yang saya berikan.\n\n"
             "DATA TEKNIS:\n"
             f"{technical_data_report}\n\n"
             "TUGAS ANALISIS (Isi setiap poin hanya dari data yang ada):\n"
             "1.  **Struktur Pasar**: Berdasarkan data harga, apa struktur pasar saat ini (Trending Up, Trending Down, Sideways/Range)?\n"
-            "2.  **Kekuatan Indikator**: Bagaimana kekuatan momentum berdasarkan RSI dan MACD di timeframe kunci (4H, 1H, 15m)?\n"
-            "3.  **Level Kunci**: Identifikasi level Support dan Resistance terdekat dan terkuat dari data Pivot Points yang diberikan.\n"
+            "2.  **Kekuatan Indikator**: Bagaimana kekuatan momentum berdasarkan RSI dan MACD di timeframe kunci (4H, 1H)?\n"
+            "3.  **Level Kunci**: Identifikasi level Support dan Resistance TERKUAT dari data Pivot Points yang diberikan. Pilih satu nilai Resistance (dari R1/R2) dan satu nilai Support (dari S1/S2).\n"
             "4.  **Bias Harga**: Apa bias arah harga untuk beberapa jam ke depan (Bullish, Bearish, Neutral)?\n"
-            "5.  **Rencana Trading**: Buat satu rencana trading yang paling logis (Long atau Short) dengan Entry, TP 1 2, dan SL yang jelas. TP dan SL harus menargetkan atau berada di dekat level Pivot.\n"
+            "5.  **Rencana Trading**: Buat satu rencana trading. Jika bias Bullish, buat rencana 'Long'. Jika Bearish, buat rencana 'Short'. Jika Neutral, atur 'Action' ke 'Neutral' dan nilai lainnya ke 'N/A'. Rencana HARUS menyertakan Entry, TP, dan SL yang jelas dan menargetkan level Pivot.\n"
             "6.  **Kesimpulan**: Berikan kesimpulan trading dalam satu kalimat.\n\n"
             "FORMAT OUTPUT:\n"
-            "Berikan output HANYA dalam format JSON yang valid. Gunakan kunci berikut: 'structure', 'indicators', 'key_levels', 'bias', 'trade_plan', dan 'conclusion'. Untuk 'trade_plan' dan 'key_levels' gunakan sub-objek."
+            "Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan kunci berikut: 'structure', 'indicators', 'key_levels' (dengan sub-kunci 'Resistance' dan 'Support'), 'bias', 'trade_plan' (dengan sub-kunci 'Action', 'Entry', 'TP', 'SL'), dan 'conclusion'."
         )
         
         response = model.generate_content(prompt)
@@ -171,7 +171,7 @@ def format_analysis_message(analysis, current_price):
         main_emoji = '⚪️'
         
     message = (
-        f"*{main_emoji} ANALISIS TEKNIKAL DARI MAMANG AI UNTUK {SYMBOL}*\n\n"
+        f"*{main_emoji} ANALISIS TEKNIKAL AI UNTUK {SYMBOL}*\n\n"
         f"*Harga Saat Ini: ${current_price:,.2f}*\n\n"
         f"----------------------------------------\n\n"
         f"*Struktur Pasar:*\n_{structure}_\n\n"
