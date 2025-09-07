@@ -99,11 +99,11 @@ def format_data_for_gemini(all_data, sr_levels=None, all_ta_indicators=None):
         report += "\n"
         
     # Hanya melampirkan data harga mentah dari timeframe kunci
-    key_timeframes = ['4h', '1h']
+    key_timeframes = ['1d', '4h', '1h', '15m']
     for tf in key_timeframes:
         df = all_data.get(tf)
         if df is not None and not df.empty:
-            df_subset = df.copy().tail(20) # Mengirim 20 candle terakhir
+            df_subset = df.copy().tail(50) # Mengirim 20 candle terakhir
             df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
             report += f"--- Data Harga Timeframe: {tf} ---\n"
             report += df_subset.to_string(index=False)
