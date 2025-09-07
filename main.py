@@ -2,8 +2,8 @@
 
 """
 Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif
-menggunakan Google Gemini dengan pendekatan multi-timeframe, data indikator teknis,
-dan Google Search Grounding untuk data sentimen dan pasar.
+menggunakan Google Gemini. Versi ini fokus pada analisis teknikal murni
+dari data multi-timeframe dan indikator untuk mengurangi penggunaan API.
 """
 
 import os
@@ -68,31 +68,28 @@ def calculate_pivot_points(df):
     }
 
 def calculate_ta_indicators(df):
-    """Menghitung indikator teknis kunci dan mengembalikan nilai terakhir."""
+    """Menghitung indikator teknis kunci."""
     if df is None or df.empty: return None
     try:
         df.ta.rsi(length=14, append=True)
         df.ta.macd(fast=12, slow=26, signal=9, append=True)
-        df.ta.bbands(length=20, std=2, append=True)
         latest = df.iloc[-1]
         return {
             'RSI_14': f"{latest.get('RSI_14', 0):.2f}",
-            'MACD': f"{latest.get('MACDh_12_26_9', 0):.2f}",
-            'BB_Upper': f"{latest.get('BBU_20_2.0', 0):.2f}",
-            'BB_Lower': f"{latest.get('BBL_20_2.0', 0):.2f}"
+            'MACD_H': f"{latest.get('MACDh_12_26_9', 0):.2f}"
         }
     except Exception as e:
         print(f"Peringatan: Gagal menghitung indikator TA. Error: {e}")
         return None
 
 def format_data_for_gemini(all_data, sr_levels=None, all_ta_indicators=None):
-    """Mengubah semua data menjadi satu laporan teks komprehensif."""
+    """Mengubah data teknis menjadi laporan teks."""
     report = "Data teknis pasar untuk dianalisis:\n\n"
     if all_ta_indicators:
         report += "--- Data Indikator Teknis (Nilai Terakhir) ---\n"
         for tf, indicators in all_ta_indicators.items():
             if indicators:
-                report += f"TF {tf}: RSI={indicators['RSI_14']}, MACD_H={indicators['MACD']}\n"
+                report += f"TF {tf}: RSI={indicators['RSI_14']}, MACD_H={indicators['MACD_H']}\n"
         report += "\n"
 
     if sr_levels:
@@ -100,44 +97,44 @@ def format_data_for_gemini(all_data, sr_levels=None, all_ta_indicators=None):
         for level, value in sr_levels.items():
             report += f"{level}: {value:,.2f}\n"
         report += "\n"
+        
+    # Hanya melampirkan data harga mentah dari timeframe kunci
+    key_timeframes = ['4h', '1h']
+    for tf in key_timeframes:
+        df = all_data.get(tf)
+        if df is not None and not df.empty:
+            df_subset = df.copy().tail(20) # Mengirim 20 candle terakhir
+            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
+            report += f"--- Data Harga Timeframe: {tf} ---\n"
+            report += df_subset.to_string(index=False)
+            report += "\n\n"
+            
     return report
 
 def get_gemini_analysis(technical_data_report):
-    """Mengirim laporan ke Gemini dan meminta analisis komprehensif dalam format JSON."""
+    """Mengirim laporan teknis ke Gemini dan meminta rencana trading dalam format JSON."""
     try:
-        print("Menghubungi Google Gemini untuk analisis komprehensif...")
+        print("Menghubungi Google Gemini untuk analisis teknikal...")
         genai.configure(api_key=GEMINI_API_KEY)
         
-        # --- PERBAIKAN: Menghapus parameter 'disable_attribution' ---
-        tools = [genai.protos.Tool(
-            google_search_retrieval=genai.protos.GoogleSearchRetrieval()
-        )]
-        
         model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash-latest',
-            tools=tools
+            'gemini-2.0-flash',
+            generation_config=genai.GenerationConfig(response_mime_type="application/json")
         )
         
         prompt = (
-            f"Anda adalah tim analis keuangan kuantitatif elit. Tugas Anda adalah membuat laporan analisis pasar yang komprehensif untuk {SYMBOL}. "
-            "Gunakan data teknis yang saya berikan DAN gunakan kemampuan pencarian internal Anda untuk menemukan data on-chain dan berita.\n\n"
-            "DATA TEKNIS INTERNAL:\n"
+            f"Anda adalah seorang analis teknikal murni. Tugas Anda adalah membuat rencana trading untuk {SYMBOL} hanya berdasarkan data teknis yang saya berikan.\n\n"
+            "DATA TEKNIS:\n"
             f"{technical_data_report}\n\n"
-            "TUGAS ANALISIS (Isi setiap poin berdasarkan data teknis dan pencarian Anda):\n"
-            "1.  **Candle**: Analisis 1-3 candle terakhir di timeframe 4H. Apakah ada pola signifikan (Doji, Engulfing, Hammer)?\n"
-            "2.  **Chart**: Identifikasi pola chart mayor yang sedang terbentuk di timeframe 4H atau 1D (misal: 'Bull Flag', 'Rising Wedge', 'Sideways Range').\n"
-            "3.  **Indikator**: Berikan kesimpulan dari data indikator yang ada. Apakah RSI overbought/oversold? Apakah MACD menunjukkan penguatan/pelemahan momentum?\n"
-            "4.  **Berita Sentimen**: Lakukan pencarian. Apa sentimen pasar crypto secara umum saat ini (Fear, Greed, Neutral)? Adakah berita besar yang mempengaruhi {SYMBOL}?\n"
-            "5.  **Bias Harga**: Berdasarkan semua data, apa bias arah harga untuk 12 jam ke depan (Bullish, Bearish, Sideways)?\n"
-            "6.  **Volatilitas**: Bagaimana tingkat volatilitas saat ini (Tinggi, Sedang, Rendah)?\n"
-            "7.  **Market Depth**: Lakukan pencarian untuk data futures {SYMBOL}. Cari nilai perkiraan untuk Funding Rate (Positif/Negatif), Open Interest (Naik/Turun), dan area likuidasi besar terdekat.\n"
-            "8.  **Level SR**: Sebutkan level Resistance dan Support terkuat berdasarkan data Pivot dan analisis Anda.\n"
-            "9.  **Faktor Lain**: Lakukan pencarian. Adakah event besar (rilis data ekonomi, unlock token) dalam 12 jam ke depan?\n"
-            "10. **Entry Ideal**: Berikan satu level harga entri ideal untuk posisi Long dan satu untuk Short.\n"
-            "11. **Confident Score**: Berikan skor kepercayaan (0-100) untuk bias harga yang Anda tentukan.\n"
-            "12. **Kesimpulan**: Berikan kesimpulan trading dalam 1-2 kalimat (misal: 'Pasar bullish, tunggu konfirmasi di support untuk entry Long.')\n\n"
+            "TUGAS ANALISIS (Isi setiap poin hanya dari data yang ada):\n"
+            "1.  **Struktur Pasar**: Berdasarkan data harga, apa struktur pasar saat ini (Trending Up, Trending Down, Sideways/Range)?\n"
+            "2.  **Kekuatan Indikator**: Bagaimana kekuatan momentum berdasarkan RSI dan MACD di timeframe kunci (4H, 1H)?\n"
+            "3.  **Level Kunci**: Identifikasi level Support dan Resistance terdekat dan terkuat dari data Pivot Points yang diberikan.\n"
+            "4.  **Bias Harga**: Apa bias arah harga untuk beberapa jam ke depan (Bullish, Bearish, Neutral)?\n"
+            "5.  **Rencana Trading**: Buat satu rencana trading yang paling logis (Long atau Short) dengan Entry, TP, dan SL yang jelas. TP dan SL harus menargetkan atau berada di dekat level Pivot.\n"
+            "6.  **Kesimpulan**: Berikan kesimpulan trading dalam satu kalimat.\n\n"
             "FORMAT OUTPUT:\n"
-            "Berikan output HANYA dalam format JSON yang valid, tanpa markdown. Gunakan kunci berikut: 'candle', 'chart', 'indicator', 'sentiment', 'bias', 'volatility', 'market_depth', 'sr_levels', 'other_factors', 'ideal_entry', 'confidence_score', 'conclusion'. Untuk 'market_depth' dan 'sr_levels' gunakan sub-objek."
+            "Berikan output HANYA dalam format JSON yang valid. Gunakan kunci berikut: 'structure', 'indicators', 'key_levels', 'bias', 'trade_plan', dan 'conclusion'. Untuk 'trade_plan' dan 'key_levels' gunakan sub-objek."
         )
         
         response = model.generate_content(prompt)
@@ -150,67 +147,48 @@ def get_gemini_analysis(technical_data_report):
         print(f"Error saat menghubungi atau mem-parsing respons Gemini: {e}")
         return None
 
-def format_full_analysis_message(analysis, current_price):
-    """Memformat pesan notifikasi analisis komprehensif dari AI."""
-    # Ekstrak semua data dari JSON dengan aman
-    candle = analysis.get('candle', 'N/A')
-    chart = analysis.get('chart', 'N/A')
-    indicator = analysis.get('indicator', 'N/A')
-    sentiment = analysis.get('sentiment', 'N/A')
+def format_analysis_message(analysis, current_price):
+    """Memformat pesan notifikasi analisis teknikal dari AI."""
+    structure = analysis.get('structure', 'N/A')
+    indicators = analysis.get('indicators', 'N/A')
     bias = analysis.get('bias', 'N/A').upper()
-    volatility = analysis.get('volatility', 'N/A')
     
-    market_depth = analysis.get('market_depth', {})
-    funding_rate = market_depth.get('Funding Rate', 'N/A')
-    liquidation = market_depth.get('Liquidation', 'N/A')
-    open_interest = market_depth.get('Open Interest', 'N/A')
+    key_levels = analysis.get('key_levels', {})
+    resistance = key_levels.get('Resistance', 'N/A')
+    support = key_levels.get('Support', 'N/A')
     
-    sr_levels = analysis.get('sr_levels', {})
-    resistance = sr_levels.get('Resistance kuat', 'N/A')
-    support = sr_levels.get('Support kuat', 'N/A')
+    trade_plan = analysis.get('trade_plan', {})
+    action = trade_plan.get('Action', 'N/A').upper()
+    entry = trade_plan.get('Entry', 'N/A')
+    tp = trade_plan.get('TP', 'N/A')
+    sl = trade_plan.get('SL', 'N/A')
     
-    other_factors = analysis.get('other_factors', 'Tidak ada')
-    
-    ideal_entry = analysis.get('ideal_entry', {})
-    long_entry = ideal_entry.get('Long', 'N/A')
-    short_entry = ideal_entry.get('Short', 'N/A')
-    
-    confidence = analysis.get('confidence_score', 0)
     conclusion = analysis.get('conclusion', 'N/A')
 
-    # Tentukan emoji utama berdasarkan bias
-    if bias == 'BULLISH':
+    if action == 'LONG':
         main_emoji = '🟢'
-    elif bias == 'BEARISH':
+    elif action == 'SHORT':
         main_emoji = '🔴'
     else:
         main_emoji = '⚪️'
         
     message = (
-        f"*{main_emoji} LAPORAN ANALISIS AI UNTUK {SYMBOL}*\n\n"
-        f"Berikut adalah analisis pasar komprehensif yang dihasilkan oleh Gemini AI.\n"
+        f"*{main_emoji} ANALISIS TEKNIKAL AI UNTUK {SYMBOL}*\n\n"
         f"*Harga Saat Ini: ${current_price:,.2f}*\n\n"
         f"----------------------------------------\n\n"
-        f"*1. Analisis Candle (4H):*\n_{candle}_\n\n"
-        f"*2. Pola Chart (1D/4H):*\n_{chart}_\n\n"
-        f"*3. Kesimpulan Indikator:*\n_{indicator}_\n\n"
-        f"*4. Sentimen Pasar:*\n_{sentiment}_\n\n"
-        f"*5. Bias Harga (12 Jam):*\n*{bias}*\n\n"
-        f"*6. Volatilitas Saat Ini:*\n_{volatility}_\n\n"
-        f"*7. Market Depth (Futures):*\n"
-        f"  - Funding Rate: _{funding_rate}_\n"
-        f"  - Open Interest: _{open_interest}_\n"
-        f"  - Zona Likuidasi Terdekat: _{liquidation}_\n\n"
-        f"*8. Level Support & Resistance:*\n"
-        f"  - Resistance Kuat: *{resistance}*\n"
-        f"  - Support Kuat: *{support}*\n\n"
-        f"*9. Faktor Eksternal (12 Jam):*\n_{other_factors}_\n\n"
-        f"*10. Zona Entry Ideal:*\n"
-        f"  - Long: *{long_entry}*\n"
-        f"  - Short: *{short_entry}*\n\n"
+        f"*Struktur Pasar:*\n_{structure}_\n\n"
+        f"*Kekuatan Indikator:*\n_{indicators}_\n\n"
+        f"*Level Kunci:*\n"
+        f"  - Resistance: *{resistance}*\n"
+        f"  - Support: *{support}*\n\n"
+        f"*Bias Harga Jangka Pendek:*\n*{bias}*\n\n"
         f"----------------------------------------\n\n"
-        f"📌 *Kesimpulan & Skor Kepercayaan:*\n"
-        f"_{conclusion}_ (*Skor: {confidence}%*)\n\n"
+        f"📌 *Rencana Trading & Kesimpulan:*\n"
+        f"  - **Aksi:** *{action}*\n"
+        f"  - **Entry:** *{entry}*\n"
+        f"  - **Take Profit:** *{tp}*\n"
+        f"  - **Stop Loss:** *{sl}*\n\n"
+        f"_{conclusion}_\n\n"
         f"*Disclaimer: Ini bukan nasihat keuangan.*"
     )
     return message
@@ -237,20 +215,18 @@ async def main():
 
     all_ta_indicators = {}
     for tf, df in all_market_data.items():
-        print(f"Menghitung indikator TA untuk timeframe {tf}...")
         all_ta_indicators[tf] = calculate_ta_indicators(df)
 
     sr_levels = calculate_pivot_points(all_market_data.get('1d'))
     technical_report = format_data_for_gemini(all_market_data, sr_levels, all_ta_indicators)
     
-    full_analysis_result = get_gemini_analysis(technical_report)
+    analysis_result = get_gemini_analysis(technical_report)
     
-    if full_analysis_result is None:
-        await send_telegram_message("❌ **Bot Error:** Gagal mendapatkan analisis komprehensif dari Gemini AI.")
+    if analysis_result is None:
+        await send_telegram_message("❌ **Bot Error:** Gagal mendapatkan analisis dari Gemini AI.")
         return
 
-    # Kirim laporan lengkap ke Telegram
-    report_message = format_full_analysis_message(full_analysis_result, last_price)
+    report_message = format_analysis_message(analysis_result, last_price)
     await send_telegram_message(report_message)
 
 if __name__ == "__main__":
