@@ -69,7 +69,7 @@ def get_gemini_analysis(price_data_report):
     try:
         print("Menghubungi Google Gemini untuk analisis pasar...")
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = (
             "Anda adalah seorang trader dan analis teknikal profesional dengan pengalaman 20 tahun di pasar cryptocurrency. "
