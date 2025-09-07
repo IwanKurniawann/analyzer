@@ -83,7 +83,7 @@ def fetch_data(symbol, timeframe, limit):
     """
     try:
         print(f"Mengambil {limit} data candle terakhir untuk {symbol} pada timeframe {timeframe} dari Bybit...")
-        exchange = ccxt.bybit() 
+        exchange = ccxt.kucoin() 
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
