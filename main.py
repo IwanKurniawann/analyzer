@@ -108,13 +108,13 @@ def get_gemini_analysis(technical_data_report):
         print("Menghubungi Google Gemini untuk analisis komprehensif...")
         genai.configure(api_key=GEMINI_API_KEY)
         
-        # --- PERUBAHAN: Mengaktifkan Google Search ---
+        # --- PERBAIKAN: Menghapus parameter 'disable_attribution' ---
         tools = [genai.protos.Tool(
-            google_search_retrieval=genai.protos.GoogleSearchRetrieval(disable_attribution=False)
+            google_search_retrieval=genai.protos.GoogleSearchRetrieval()
         )]
         
         model = genai.GenerativeModel(
-            model_name='gemini-2.0-flash',
+            model_name='gemini-1.5-flash-latest',
             tools=tools
         )
         
