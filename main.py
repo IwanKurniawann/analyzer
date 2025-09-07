@@ -24,7 +24,7 @@ TIMEFRAMES = ['1d', '4h', '1h', '15m']
 CANDLE_COUNT_FOR_GEMINI = 100 # Jumlah candle per timeframe untuk dianalisis
 
 # Atur ke False untuk menjalankan analisis AI lengkap.
-DEBUG_FETCH_ONLY = True
+DEBUG_FETCH_ONLY = False
 
 LAST_SIGNAL_FILE = "last_signal.txt"
 
