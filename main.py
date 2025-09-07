@@ -23,8 +23,9 @@ SYMBOL = 'SOL/USDT'
 TIMEFRAMES = ['1d', '4h', '1h', '15m']
 CANDLE_COUNT_FOR_GEMINI = 100 # Jumlah candle per timeframe untuk dianalisis
 
-# Atur ke False untuk menjalankan analisis AI lengkap.
-DEBUG_FETCH_ONLY = False
+# Atur ke True untuk hanya mengambil data dan mengirim laporan status fetch ke Telegram.
+# Mode debug sekarang akan mengirim 5 baris data mentah terakhir per timeframe.
+DEBUG_FETCH_ONLY = True
 
 LAST_SIGNAL_FILE = "last_signal.txt"
 
@@ -204,6 +205,9 @@ async def send_telegram_message(message):
     """Mengirim pesan ke Telegram."""
     try:
         bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+        # Memotong pesan jika terlalu panjang untuk Telegram
+        if len(message) > 4096:
+            message = message[:4090] + "\n..."
         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
         print("Notifikasi berhasil dikirim.")
     except Exception as e:
@@ -223,20 +227,38 @@ async def main():
     
     all_market_data = await fetch_all_data(SYMBOL, TIMEFRAMES, CANDLE_COUNT_FOR_GEMINI)
     
+    # --- PERUBAHAN: Mode Debug sekarang mengirim sampel data mentah ---
     if DEBUG_FETCH_ONLY:
         tz = pytz.timezone('Asia/Jakarta')
         now = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
-        debug_message = f"⚙️ **Bot Debug Mode: Laporan Fetch** ⚙️\n\n"
+        
+        debug_message = f"⚙️ **Bot Debug: Laporan Data Mentah** ⚙️\n\n"
         debug_message += f"**Waktu:** {now} WIB\n\n"
-        debug_message += "**Status Pengambilan Data:**\n"
+        
         success_count = 0
         for tf, df in all_market_data.items():
-            status = "✅ Berhasil" if df is not None and not df.empty else "❌ Gagal"
-            debug_message += f"  - **Timeframe {tf}:** {status}\n"
-            if status == "✅ Berhasil": success_count += 1
-        debug_message += "\nSemua data berhasil diambil. Bot siap untuk analisis." if success_count == len(TIMEFRAMES) else "\nAda masalah saat mengambil data. Periksa log Actions untuk detail."
+            debug_message += f"--- Timeframe {tf} ---\n"
+            if df is not None and not df.empty:
+                status = "✅ Berhasil diambil."
+                # Mengambil 5 baris terakhir dan format sebagai teks
+                sample_data = df.tail(5).copy()
+                sample_data['timestamp'] = sample_data['timestamp'].dt.strftime('%m-%d %H:%M')
+                data_string = sample_data.to_string(index=False)
+                
+                debug_message += f"{status}\n"
+                debug_message += f"```{data_string}```\n\n" # Menggunakan format code block
+                success_count += 1
+            else:
+                status = "❌ Gagal diambil."
+                debug_message += f"{status}\n\n"
+            
+        if success_count == len(TIMEFRAMES):
+            debug_message += "Semua data berhasil diambil. Bot siap untuk analisis."
+        else:
+            debug_message += "Ada masalah saat mengambil data. Periksa log Actions untuk detail."
+
         await send_telegram_message(debug_message)
-        return
+        return # Menghentikan eksekusi setelah mengirim laporan debug
 
     if all_market_data.get('4h') is None or all_market_data['4h'].empty:
         await send_telegram_message("❌ **Bot Error:** Gagal mengambil data pasar utama (4h). Cek log Actions.")
