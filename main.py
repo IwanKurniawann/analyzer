@@ -4,6 +4,7 @@
 Skrip utama untuk menganalisis data harga BTC/USDT menggunakan Google Gemini
 dengan pendekatan multi-timeframe (1D, 4H, 1H, 15M) untuk menghasilkan
 rencana trading yang komprehensif (Entry, TP, SL).
+Versi ini menambahkan perhitungan Support/Resistance otomatis.
 """
 
 import os
@@ -22,6 +23,9 @@ SYMBOL = 'SOL/USDT'
 TIMEFRAMES = ['1d', '4h', '1h', '15m']
 CANDLE_COUNT_FOR_GEMINI = 100 # Jumlah candle per timeframe untuk dianalisis
 
+# Atur ke False untuk menjalankan analisis AI lengkap.
+DEBUG_FETCH_ONLY = True
+
 LAST_SIGNAL_FILE = "last_signal.txt"
 
 # --- KREDENSIAL (diambil dari GitHub Secrets) ---
@@ -34,7 +38,7 @@ def check_credentials():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Error: Pastikan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID sudah diatur.")
         sys.exit(1)
-    if not GEMINI_API_KEY:
+    if not GEMINI_API_KEY and not DEBUG_FETCH_ONLY: # Hanya cek Gemini key jika tidak dalam mode debug
         print("Error: Pastikan GEMINI_API_KEY sudah diatur di GitHub Secrets.")
         sys.exit(1)
 
@@ -45,6 +49,7 @@ async def fetch_all_data(symbol, timeframes, limit):
     for tf in timeframes:
         try:
             print(f"Mengambil {limit} data candle terakhir untuk {symbol} pada timeframe {tf}...")
+            # Menggunakan asyncio.to_thread untuk menjalankan fungsi sinkron di dalam loop asinkron
             ohlcv = await asyncio.to_thread(exchange.fetch_ohlcv, symbol, timeframe=tf, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
@@ -55,8 +60,34 @@ async def fetch_all_data(symbol, timeframes, limit):
             all_data[tf] = None
     return all_data
 
-def format_data_for_gemini(all_data):
-    """Mengubah semua data DataFrame menjadi satu laporan teks komprehensif."""
+def calculate_pivot_points(df):
+    """Menghitung level Pivot Point Classic berdasarkan data candle sebelumnya (harian)."""
+    if len(df) < 2:
+        return None
+        
+    last_candle = df.iloc[-2] # Menggunakan data kemarin (candle sebelum terakhir)
+    high = last_candle['high']
+    low = last_candle['low']
+    close = last_candle['close']
+    
+    pivot = (high + low + close) / 3
+    r1 = (2 * pivot) - low
+    s1 = (2 * pivot) - high
+    r2 = pivot + (high - low)
+    s2 = pivot - (high - low)
+    
+    levels = {
+        'R2': r2,
+        'R1': r1,
+        'Pivot': pivot,
+        'S1': s1,
+        'S2': s2
+    }
+    print(f"Calculated Pivot Levels (based on previous day): {levels}")
+    return levels
+
+def format_data_for_gemini(all_data, sr_levels=None):
+    """Mengubah semua data DataFrame dan S/R menjadi satu laporan teks komprehensif."""
     report = "Berikut adalah data harga OHLCV terbaru untuk dianalisis:\n\n"
     for tf, df in all_data.items():
         if df is not None and not df.empty:
@@ -65,6 +96,15 @@ def format_data_for_gemini(all_data):
             report += f"--- Data Timeframe: {tf} ---\n"
             report += df_subset.to_string(index=False)
             report += "\n\n"
+            
+    if sr_levels:
+        report += "--- Level Support/Resistance Kunci (Pivot Points Harian) ---\n"
+        report += f"Resistance 2 (R2): {sr_levels['R2']:,.2f}\n"
+        report += f"Resistance 1 (R1): {sr_levels['R1']:,.2f}\n"
+        report += f"Pivot Point (P):   {sr_levels['Pivot']:,.2f}\n"
+        report += f"Support 1 (S1):    {sr_levels['S1']:,.2f}\n"
+        report += f"Support 2 (S2):    {sr_levels['S2']:,.2f}\n\n"
+        
     return report
 
 def get_gemini_analysis(price_data_report):
@@ -79,7 +119,7 @@ def get_gemini_analysis(price_data_report):
             response_mime_type="application/json"
         )
         model = genai.GenerativeModel(
-            'gemini-2.0-flash',
+            'gemini-1.5-flash-latest',
             generation_config=generation_config
         )
         
@@ -88,9 +128,10 @@ def get_gemini_analysis(price_data_report):
             f"Tugas Anda adalah menganalisis data harga OHLCV mentah untuk {SYMBOL} yang saya berikan. "
             "Lakukan analisis berikut:\n"
             "1. Identifikasi tren utama dan struktur pasar pada timeframe tinggi (1D, 4H).\n"
-            "2. Cari potensi area support/resistance kunci, zona likuiditas, dan pola chart mayor.\n"
-            "3. Gunakan timeframe rendah (1H, 15M) untuk mencari konfirmasi, momentum, dan sinyal entry yang presisi.\n"
-            "4. Rangkum semua temuan Anda ke dalam satu rencana trading yang jelas.\n"
+            "2. Gunakan level Support/Resistance (Pivot Points) yang disediakan sebagai acuan utama untuk menentukan potensi target profit dan level stop loss.\n"
+            "3. Cari potensi area support/resistance kunci lainnya, zona likuiditas, dan pola chart mayor dari data harga.\n"
+            "4. Gunakan timeframe rendah (1H, 15M) untuk mencari konfirmasi, momentum, dan sinyal entry yang presisi.\n"
+            "5. Rangkum semua temuan Anda ke dalam satu rencana trading yang jelas.\n"
             "Berdasarkan analisis komprehensif Anda, berikan output HANYA dalam format JSON yang valid. "
             "JSON tersebut harus berisi kunci berikut:\n"
             "- 'action': String ('Long', 'Short', atau 'Neutral')\n"
@@ -182,13 +223,33 @@ async def main():
     
     all_market_data = await fetch_all_data(SYMBOL, TIMEFRAMES, CANDLE_COUNT_FOR_GEMINI)
     
-    # Memastikan data timeframe utama (4h) ada untuk harga terakhir
+    if DEBUG_FETCH_ONLY:
+        tz = pytz.timezone('Asia/Jakarta')
+        now = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+        debug_message = f"⚙️ **Bot Debug Mode: Laporan Fetch** ⚙️\n\n"
+        debug_message += f"**Waktu:** {now} WIB\n\n"
+        debug_message += "**Status Pengambilan Data:**\n"
+        success_count = 0
+        for tf, df in all_market_data.items():
+            status = "✅ Berhasil" if df is not None and not df.empty else "❌ Gagal"
+            debug_message += f"  - **Timeframe {tf}:** {status}\n"
+            if status == "✅ Berhasil": success_count += 1
+        debug_message += "\nSemua data berhasil diambil. Bot siap untuk analisis." if success_count == len(TIMEFRAMES) else "\nAda masalah saat mengambil data. Periksa log Actions untuk detail."
+        await send_telegram_message(debug_message)
+        return
+
     if all_market_data.get('4h') is None or all_market_data['4h'].empty:
         await send_telegram_message("❌ **Bot Error:** Gagal mengambil data pasar utama (4h). Cek log Actions.")
         return
     last_price = all_market_data['4h']['close'].iloc[-1]
 
-    price_report = format_data_for_gemini(all_market_data)
+    # Menghitung level S/R dari data harian
+    sr_levels = None
+    daily_df = all_market_data.get('1d')
+    if daily_df is not None and not daily_df.empty:
+        sr_levels = calculate_pivot_points(daily_df)
+
+    price_report = format_data_for_gemini(all_market_data, sr_levels)
     analysis_result = get_gemini_analysis(price_report)
     
     if analysis_result is None:
