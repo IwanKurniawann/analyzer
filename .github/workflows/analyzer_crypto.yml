@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   schedule:
     # Mengurangi frekuensi untuk tetap di bawah batas kuota gratis Gemini
-    - cron: '0 */1 * * *'
+    - cron: '2 */1 * * *'
   workflow_dispatch: # Memungkinkan eksekusi manual
 
 jobs:
