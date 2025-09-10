@@ -40,7 +40,7 @@ async def fetch_all_data(symbol, timeframes, limit):
     """Mengambil data OHLCV untuk semua timeframe."""
     all_data = {}
     # Gunakan Binance karena lebih umum dan datanya seringkali lebih lengkap
-    exchange = ccxt.binance() 
+    exchange = ccxt.kucoin() 
     print(f"Menginisialisasi pengambilan data untuk {symbol}...")
     for tf in timeframes:
         try:
