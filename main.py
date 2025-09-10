@@ -20,7 +20,7 @@ from datetime import datetime
 import pytz
 
 # --- KONFIGURASI ---
-SYMBOL = 'SOL/USDT'
+SYMBOL = 'DOGE/USDT'
 TIMEFRAMES = ['1d', '4h', '1h'] # Fokus pada timeframe kunci untuk analisis top-down
 CANDLE_COUNT_FOR_FETCH = 800 # Ambil data lebih banyak untuk kalkulasi EMA 200
 
