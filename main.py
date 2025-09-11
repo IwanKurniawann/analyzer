@@ -24,7 +24,7 @@ CONFIG = {
     'symbol': 'SOL/USDT',
     'timeframes': ['1d', '4h', '1h'],
     'exchange_id': 'kucoin',  # Ganti ke 'kucoin', 'bybit', dll. jika perlu
-    'candle_count_for_fetch': 200,
+    'candle_count_for_fetch': 1000,
     'indicators': {
         'rsi': {'length': 14},
         'ema': {'lengths': [21, 50, 200]},
