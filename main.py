@@ -22,7 +22,7 @@ import pytz
 # --- KONFIGURASI ---
 SYMBOL = 'SOL/USDT'
 TIMEFRAMES = ['1d', '4h', '1h'] # Fokus pada timeframe kunci untuk analisis top-down
-CANDLE_COUNT_FOR_FETCH = 400 # Ambil data lebih banyak untuk kalkulasi EMA 200
+CANDLE_COUNT_FOR_FETCH = 200 # Ambil data lebih banyak untuk kalkulasi EMA 200
 
 # --- KREDENSIAL ---
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
