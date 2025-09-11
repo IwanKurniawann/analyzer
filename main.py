@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-
 """
 Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif
-menggunakan Google Gemini. Versi ini telah di-upgrade untuk mengimplementasikan
-metodologi analisis Top-Down (Daily -> H4 -> H1) ala Certified Financial
-Technician (CFTe), dengan fokus pada EMA, Fibonacci Retracement, dan konfluensi sinyal.
+menggunakan Google Gemini. Versi ini telah di-upgrade untuk menjadi lebih
+adaptif dan antisipatif dengan menambahkan ADX dan Analisis Volume, serta
+menggunakan struktur berbasis konfigurasi.
 """
 
 import os
@@ -19,10 +18,22 @@ import json
 from datetime import datetime
 import pytz
 
-# --- KONFIGURASI ---
-SYMBOL = 'SOL/USDT'
-TIMEFRAMES = ['1d', '4h', '1h'] # Fokus pada timeframe kunci untuk analisis top-down
-CANDLE_COUNT_FOR_FETCH = 200 # Ambil data lebih banyak untuk kalkulasi EMA 200
+# --- 1. KONFIGURASI UTAMA (MEMBUAT KODE ADAPTIF) ---
+# Ubah semua pengaturan di sini. Tambahkan indikator baru di 'indicators'.
+CONFIG = {
+    'symbol': 'SOL/USDT',
+    'timeframes': ['1d', '4h', '1h'],
+    'exchange_id': 'kucoin',  # Ganti ke 'kucoin', 'bybit', dll. jika perlu
+    'candle_count_for_fetch': 200,
+    'indicators': {
+        'rsi': {'length': 14},
+        'ema': {'lengths': [21, 50, 200]},
+        'adx': {'length': 14},
+        'volume_profile': {'ma_length': 21} # Analisis volume vs moving average-nya
+    },
+    'fibonacci_timeframe': '4h', # Timeframe acuan untuk Fibonacci
+    'fibonacci_swing_candles': 60 # Jumlah candle untuk mencari swing high/low
+}
 
 # --- KREDENSIAL ---
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -36,12 +47,18 @@ def check_credentials():
     if not GEMINI_API_KEY:
         sys.exit("Error: Pastikan GEMINI_API_KEY sudah diatur.")
 
-async def fetch_all_data(symbol, timeframes, limit):
-    """Mengambil data OHLCV untuk semua timeframe."""
+async def fetch_all_data(symbol, timeframes, limit, exchange_id):
+    """Mengambil data OHLCV untuk semua timeframe dari exchange yang dipilih."""
     all_data = {}
-    # Gunakan Binance karena lebih umum dan datanya seringkali lebih lengkap
-    exchange = ccxt.kucoin() 
-    print(f"Menginisialisasi pengambilan data untuk {symbol}...")
+    try:
+        # Menginisialisasi exchange secara dinamis
+        exchange_class = getattr(ccxt, exchange_id)
+        exchange = exchange_class()
+    except (AttributeError, ccxt.ExchangeNotFound):
+        print(f"Error: Exchange '{exchange_id}' tidak ditemukan atau tidak didukung oleh CCXT.")
+        return None
+
+    print(f"Menginisialisasi pengambilan data untuk {symbol} dari {exchange_id.title()}...")
     for tf in timeframes:
         try:
             print(f"Mengambil {limit} data candle terakhir pada timeframe {tf}...")
@@ -55,48 +72,73 @@ async def fetch_all_data(symbol, timeframes, limit):
             all_data[tf] = None
     return all_data
 
-def calculate_ta_indicators(df):
-    """Menghitung indikator teknis kunci: RSI dan EMA."""
+def calculate_ta_indicators(df, indicator_config):
+    """
+    Menghitung indikator teknis secara dinamis berdasarkan konfigurasi.
+    Ini adalah jantung dari adaptabilitas skrip.
+    """
     if df is None or df.empty: return None
-    try:
-        # Kalkulasi RSI
-        df.ta.rsi(length=14, append=True)
-        
-        # Kalkulasi EMAs
-        emas = [21, 50, 200]
-        for period in emas:
-            df.ta.ema(length=period, append=True)
-            
-        latest = df.iloc[-1]
-        
-        # Ekstrak nilai EMA dalam format yang rapi
-        ema_values = {f"EMA_{period}": f"{latest.get(f'EMA_{period}', 0):.2f}" for period in emas}
+    
+    indicators = {}
+    latest = df.iloc[-1]
 
-        return {
-            'RSI_14': f"{latest.get('RSI_14', 0):.2f}",
-            'EMAs': ema_values
-        }
+    try:
+        # RSI
+        if 'rsi' in indicator_config:
+            rsi_length = indicator_config['rsi']['length']
+            df.ta.rsi(length=rsi_length, append=True)
+            indicators['RSI'] = f"{latest.get(f'RSI_{rsi_length}', 0):.2f}"
+
+        # EMAs
+        if 'ema' in indicator_config:
+            ema_lengths = indicator_config['ema']['lengths']
+            ema_values = {}
+            for period in ema_lengths:
+                df.ta.ema(length=period, append=True)
+                ema_values[f"EMA_{period}"] = f"{df.iloc[-1].get(f'EMA_{period}', 0):.2f}"
+            indicators['EMAs'] = ema_values
+
+        # ADX (untuk kekuatan tren)
+        if 'adx' in indicator_config:
+            adx_length = indicator_config['adx']['length']
+            adx_data = df.ta.adx(length=adx_length, append=True)
+            if adx_data is not None and not adx_data.empty:
+                 indicators['ADX'] = {
+                    "ADX": f"{adx_data.iloc[-1][f'ADX_{adx_length}']:.2f}",
+                    "Status": "Tren Kuat" if adx_data.iloc[-1][f'ADX_{adx_length}'] > 25 else "Tren Lemah / Ranging"
+                }
+
+        # Analisis Volume (untuk keyakinan pasar)
+        if 'volume_profile' in indicator_config:
+            vol_ma_len = indicator_config['volume_profile']['ma_length']
+            vol_ma = df['volume'].rolling(window=vol_ma_len).mean()
+            last_vol = latest['volume']
+            last_vol_ma = vol_ma.iloc[-1]
+            status = "Di Atas Rata-rata" if last_vol > last_vol_ma else "Di Bawah Rata-rata"
+            indicators['Volume'] = {
+                "Last_Volume": f"{last_vol:,.0f}",
+                "Volume_MA": f"{last_vol_ma:,.0f}",
+                "Status": status
+            }
+
+        return indicators
     except Exception as e:
         print(f"Peringatan: Gagal menghitung indikator TA. Error: {e}")
         return None
 
-def calculate_fibonacci_retracement(df_h4):
-    """Menghitung Fibonacci Retracement pada swing terakhir di H4."""
-    if df_h4 is None or len(df_h4) < 50: return None
+
+def calculate_fibonacci_retracement(df, swing_candles):
+    """Menghitung Fibonacci Retracement pada swing terakhir."""
+    if df is None or len(df) < swing_candles: return None
     
-    # Ambil 60 candle terakhir untuk mengidentifikasi swing yang relevan
-    recent_df = df_h4.tail(60)
+    recent_df = df.tail(swing_candles)
     swing_high = recent_df['high'].max()
     swing_low = recent_df['low'].min()
     
-    # Pastikan swing valid
     if swing_high == swing_low: return None
 
     levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-    fibo_levels = {}
-    for level in levels:
-        price = swing_high - (swing_high - swing_low) * level
-        fibo_levels[f"{level*100:.1f}%"] = f"{price:.2f}"
+    fibo_levels = {f"{level*100:.1f}%": f"{(swing_high - (swing_high - swing_low) * level):.2f}" for level in levels}
         
     return {
         "swing_high": f"{swing_high:.2f}",
@@ -108,62 +150,64 @@ def format_data_for_gemini(all_data, all_ta_indicators, fibo_levels):
     """Mengubah data teknis menjadi laporan teks yang terstruktur untuk AI."""
     report = "Data teknis pasar untuk dianalisis:\n\n"
     
-    # 1. Ringkasan Indikator Multi-Timeframe
     report += "--- Ringkasan Indikator Teknis (Nilai Terakhir) ---\n"
     for tf, indicators in all_ta_indicators.items():
-        if indicators:
+        if not indicators: continue
+        
+        report += f"**Timeframe: {tf}**\n"
+        if 'RSI' in indicators: report += f"- RSI: {indicators['RSI']}\n"
+        if 'EMAs' in indicators:
             emas_str = ", ".join([f"{k}: {v}" for k, v in indicators['EMAs'].items()])
-            report += f"TF {tf}: RSI={indicators['RSI_14']}; {emas_str}\n"
-    report += "\n"
+            report += f"- EMAs: {emas_str}\n"
+        if 'ADX' in indicators: report += f"- ADX: {indicators['ADX']['ADX']} ({indicators['ADX']['Status']})\n"
+        if 'Volume' in indicators: report += f"- Volume: {indicators['Volume']['Status']}\n"
+        report += "\n"
 
-    # 2. Level Fibonacci Kunci dari H4
     if fibo_levels:
-        report += "--- Fibonacci Retracement dari Swing H4 (Swing Low: ${low}, Swing High: ${high}) ---\n".format(
-            low=fibo_levels['swing_low'], high=fibo_levels['swing_high']
-        )
+        report += f"--- Fibonacci Retracement dari Swing {CONFIG['fibonacci_timeframe']} (Swing Low: ${fibo_levels['swing_low']}, Swing High: ${fibo_levels['swing_high']}) ---\n"
         for level, price in fibo_levels['levels'].items():
             report += f"Level {level}: ${price}\n"
         report += "\n"
         
-    # 3. Data Harga Mentah (sebagai konteks tambahan)
-    report += "--- Data Harga Mentah (20 Candle Terakhir) ---\n"
+    report += "--- Data Harga Mentah (10 Candle Terakhir untuk Konteks) ---\n"
     for tf, df in all_data.items():
         if df is not None and not df.empty:
-            df_subset = df.copy().tail(20)
+            df_subset = df.copy().tail(10)
             df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
             report += f"Data Timeframe: {tf}\n"
-            report += df_subset.to_string(index=False)
+            report += df_subset[['timestamp', 'open', 'high', 'low', 'close', 'volume']].to_string(index=False)
             report += "\n\n"
             
     return report
 
-def get_gemini_analysis(technical_data_report):
+def get_gemini_analysis(technical_data_report, symbol):
     """
-    Mengirim laporan teknis ke Gemini dan meminta analisis top-down
-    sesuai metodologi CFTe dalam format JSON.
+    Mengirim laporan teknis ke Gemini dan meminta analisis top-down yang
+    mempertimbangkan kekuatan tren (ADX) dan volume.
     """
     try:
         print("Menghubungi Google Gemini untuk analisis teknikal mendalam...")
         genai.configure(api_key=GEMINI_API_KEY)
         
         model = genai.GenerativeModel(
-            'gemini-2.0-flash',
+            'gemini-1.5-flash', # Menggunakan model yang lebih baru dan efisien
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
         )
         
+        # --- PROMPT YANG TELAH DI-UPGRADE ---
         prompt = (
-            "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) dan analis pasar profesional. Gaya Anda objektif, metodis, dan fokus pada manajemen risiko.\n\n"
-            f"ASET: {SYMBOL}\n\n"
-            "KONTEKS: Anda diminta untuk menganalisis data teknis berikut dan menghasilkan satu skenario trading paling optimal.\n\n"
+            "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu mempertimbangkan kekuatan tren serta konfirmasi volume.\n\n"
+            f"ASET: {symbol}\n\n"
+            "KONTEKS: Analisis data teknis berikut untuk merumuskan satu skenario trading dengan probabilitas tertinggi.\n\n"
             "DATA TEKNIS YANG DISEDIAKAN:\n"
             f"{technical_data_report}\n\n"
-            "TUGAS: Lakukan analisis top-down secara ketat berdasarkan data yang ada dan hasilkan rencana trading.\n"
-            "1.  **Analisis Timeframe Daily (Tren Jangka Panjang):** Berdasarkan posisi harga relatif terhadap EMA 21, 50, dan 200, tentukan tren utama (Contoh: 'Bullish kuat karena harga di atas semua EMA dan EMA tersusun rapi').\n"
-            "2.  **Analisis Timeframe H4 (Struktur & Momentum):** Jelaskan struktur pasar saat ini (impulsif atau korektif). Identifikasi area demand/supply kunci berdasarkan level Fibonacci Retracement yang disediakan, terutama di 'golden pocket' (38.2% - 61.8%).\n"
-            "3.  **Analisis Timeframe H1 (Konfirmasi & Eksekusi):** Jelaskan sinyal konfirmasi apa yang akan Anda cari di H1 ketika harga mendekati area kunci dari H4. Perhatikan kondisi RSI (misalnya, 'RSI mendekati oversold').\n"
-            "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi) yang mendukung rencana trading Anda (Contoh: 'Tren Daily bullish, pullback ke Fibo 50% H4, dan EMA 50 H4 sebagai support dinamis').\n"
-            "5.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat singkat.\n"
-            "6.  **Rencana Trading (Trade Plan):** Buat satu rencana trading yang paling probabel (BUY LIMIT atau SELL LIMIT). Tentukan level Entry, Stop Loss (SL), dan dua Take Profit (TP1, TP2) yang logis berdasarkan analisis Fibonacci dan struktur pasar.\n\n"
+            "TUGAS: Lakukan analisis top-down yang komprehensif. **Sangat penting untuk mengintegrasikan data ADX dan Volume ke dalam analisis Anda di setiap timeframe.**\n"
+            "1.  **Analisis Timeframe Daily (Tren Makro & Kekuatan):** Tentukan tren utama berdasarkan EMA. Gunakan ADX untuk mengukur apakah tren ini kuat (ADX > 25) atau sedang melemah/ranging. Gunakan volume untuk konfirmasi.\n"
+            "2.  **Analisis Timeframe H4 (Struktur & Area Kunci):** Identifikasi struktur pasar (impulsif/korektif). Petakan area demand/supply kunci menggunakan level Fibonacci. Apakah pullback saat ini didukung oleh volume yang menurun (menandakan koreksi sehat)?\n"
+            "3.  **Analisis Timeframe H1 (Sinyal Entri & Konfirmasi):** Jelaskan sinyal konfirmasi yang Anda tunggu di H1 saat harga memasuki area kunci H4. Cari divergensi RSI, peningkatan volume saat pembalikan, atau candle pattern yang valid.\n"
+            "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi). **Wajib memasukkan ADX atau Volume sebagai salah satu faktor.** Contoh: 'Tren Daily bullish dengan ADX > 30, pullback ke Fibo 61.8% di H4 dengan volume menurun, dan potensi bullish divergence di H1.'\n"
+        	"5.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
+        	"6.  **Rencana Trading (Trade Plan):** Buat satu rencana trading (BUY LIMIT atau SELL LIMIT) dengan level Entry, Stop Loss (SL), dan dua Take Profit (TP1, TP2) yang presisi dan logis berdasarkan analisis.\n\n"
             "FORMAT OUTPUT: Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan struktur berikut:\n"
             "{\n"
             "  \"analysis\": {\n"
@@ -193,49 +237,37 @@ def get_gemini_analysis(technical_data_report):
         print(f"Error saat menghubungi atau mem-parsing respons Gemini: {e}")
         return None
 
-def format_analysis_message(analysis, current_price):
+def format_analysis_message(analysis, symbol, current_price):
     """Memformat pesan notifikasi analisis teknikal dari AI."""
     analisis = analysis.get('analysis', {})
-    daily_trend = analisis.get('daily_trend', 'N/A')
-    h4_structure = analisis.get('h4_structure', 'N/A')
-    h1_confirmation = analisis.get('h1_confirmation', 'N/A')
-    confluence = analisis.get('confluence_factors', 'N/A')
-    summary = analisis.get('summary', 'N/A')
-    
     trade_plan = analysis.get('trade_plan', {})
+    
     action = trade_plan.get('Action', 'NEUTRAL').upper()
-    entry = trade_plan.get('Entry', 'N/A')
-    tp1 = trade_plan.get('TP1', 'N/A')
-    tp2 = trade_plan.get('TP2', 'N/A')
-    sl = trade_plan.get('SL', 'N/A')
     
     if 'BUY' in action:
-        main_emoji = '🟢'
-        bias_emoji = '📈'
+        main_emoji, bias_emoji = '🟢', '📈'
     elif 'SELL' in action:
-        main_emoji = '🔴'
-        bias_emoji = '📉'
+        main_emoji, bias_emoji = '🔴', '📉'
     else:
-        main_emoji = '⚪️'
-        bias_emoji = '횡'
+        main_emoji, bias_emoji = '⚪️', '➡️'
         
     message = (
-        f"*{main_emoji} ANALISIS TEKNIKAL CFTe UNTUK {SYMBOL} {bias_emoji}*\n\n"
+        f"*{main_emoji} ANALISIS TEKNIKAL CFTe UNTUK {symbol} {bias_emoji}*\n\n"
         f"*Harga Saat Ini: ${current_price:,.2f}*\n"
         f"----------------------------------------\n\n"
         f"*Analisis Multi-Timeframe:*\n\n"
-        f"🗓️ *Daily (Tren):* _{daily_trend}_\n\n"
-        f"🕓 *H4 (Struktur):* _{h4_structure}_\n\n"
-        f"🕐 *H1 (Konfirmasi):* _{h1_confirmation}_\n\n"
-        f"*🎯 Konfluensi Sinyal:*\n_{confluence}_\n\n"
+        f"🗓️ *Daily (Tren & Kekuatan):* _{analisis.get('daily_trend', 'N/A')}_\n\n"
+        f"🕓 *H4 (Struktur & Volume):* _{analisis.get('h4_structure', 'N/A')}_\n\n"
+        f"🕐 *H1 (Konfirmasi Entri):* _{analisis.get('h1_confirmation', 'N/A')}_\n\n"
+        f"*🎯 Konfluensi Sinyal Utama:*\n_{analisis.get('confluence_factors', 'N/A')}_\n\n"
         f"----------------------------------------\n\n"
         f"📌 *SINTESIS & RENCANA TRADING*\n\n"
-        f"*{summary}*\n\n"
+        f"*{analisis.get('summary', 'N/A')}*\n\n"
         f"  - **Aksi:** *{action}*\n"
-        f"  - **Area Entry:** *{entry}*\n"
-        f"  - **Take Profit 1:** *{tp1}*\n"
-        f"  - **Take Profit 2:** *{tp2}*\n"
-        f"  - **Stop Loss:** *{sl}*\n\n"
+        f"  - **Area Entry:** *{trade_plan.get('Entry', 'N/A')}*\n"
+        f"  - **Take Profit 1:** *{trade_plan.get('TP1', 'N/A')}*\n"
+        f"  - **Take Profit 2:** *{trade_plan.get('TP2', 'N/A')}*\n"
+        f"  - **Stop Loss:** *{trade_plan.get('SL', 'N/A')}*\n\n"
         f"*Disclaimer: Ini adalah analisis otomatis dan bukan nasihat keuangan.*"
     )
     return message
@@ -244,6 +276,7 @@ async def send_telegram_message(message):
     """Mengirim pesan ke Telegram."""
     try:
         bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+        # Handle message length limit
         if len(message) > 4096: message = message[:4090] + "\n..."
         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
         print("Notifikasi analisis berhasil dikirim ke Telegram.")
@@ -251,36 +284,37 @@ async def send_telegram_message(message):
         print(f"Error saat mengirim pesan ke Telegram: {e}")
 
 async def main():
+    """Fungsi utama untuk menjalankan seluruh alur proses."""
     check_credentials()
     
-    all_market_data = await fetch_all_data(SYMBOL, TIMEFRAMES, CANDLE_COUNT_FOR_FETCH)
+    cfg = CONFIG # Alias untuk kemudahan
     
-    if all_market_data.get('1h') is None or all_market_data['1h'].empty:
-        await send_telegram_message(f"❌ **Bot Error:** Gagal mengambil data pasar utama untuk {SYMBOL}.")
+    all_market_data = await fetch_all_data(cfg['symbol'], cfg['timeframes'], cfg['candle_count_for_fetch'], cfg['exchange_id'])
+    
+    if not all_market_data or all_market_data.get(cfg['timeframes'][-1]) is None:
+        await send_telegram_message(f"❌ **Bot Error:** Gagal mengambil data pasar utama untuk {cfg['symbol']}.")
         return
-    last_price = all_market_data['1h']['close'].iloc[-1]
+        
+    last_price = all_market_data[cfg['timeframes'][-1]]['close'].iloc[-1]
 
-    # Hitung Indikator untuk setiap timeframe
     all_ta_indicators = {}
     for tf, df in all_market_data.items():
-        all_ta_indicators[tf] = calculate_ta_indicators(df)
+        print(f"Menghitung indikator untuk timeframe {tf}...")
+        all_ta_indicators[tf] = calculate_ta_indicators(df, cfg['indicators'])
 
-    # Hitung Fibonacci hanya pada timeframe H4
-    fibo_levels = calculate_fibonacci_retracement(all_market_data.get('4h'))
+    fibo_df = all_market_data.get(cfg['fibonacci_timeframe'])
+    fibo_levels = calculate_fibonacci_retracement(fibo_df, cfg['fibonacci_swing_candles'])
     
-    # Format semua data teknis menjadi satu laporan
     technical_report = format_data_for_gemini(all_market_data, all_ta_indicators, fibo_levels)
     
-    # Kirim ke Gemini untuk dianalisis
-    analysis_result = get_gemini_analysis(technical_report)
+    analysis_result = get_gemini_analysis(technical_report, cfg['symbol'])
     
     if analysis_result is None:
-        await send_telegram_message(f"❌ **Bot Error:** Gagal mendapatkan analisis dari Gemini AI untuk {SYMBOL}.")
+        await send_telegram_message(f"❌ **Bot Error:** Gagal mendapatkan analisis dari Gemini AI untuk {cfg['symbol']}.")
         return
 
-    report_message = format_analysis_message(analysis_result, last_price)
+    report_message = format_analysis_message(analysis_result, cfg['symbol'], last_price)
     await send_telegram_message(report_message)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
