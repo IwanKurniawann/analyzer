@@ -22,7 +22,7 @@ import pytz
 # Ubah semua pengaturan di sini. Tambahkan indikator baru di 'indicators'.
 CONFIG = {
     'symbol': 'SOL/USDT',
-    'timeframes': ['1d', '4h', '1h'],
+    'timeframes': ['4h', '1h', '15m'], # TF 1D dihapus, 15M ditambahkan
     'exchange_id': 'kucoin',  # Ganti ke 'kucoin', 'bybit', dll. jika perlu
     'candle_count_for_fetch': 1000,
     'indicators': {
@@ -194,7 +194,7 @@ def get_gemini_analysis(technical_data_report, symbol):
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
         )
         
-        # --- PROMPT YANG TELAH DI-UPGRADE ---
+        # --- PROMPT YANG TELAH DI-UPGRADE UNTUK TF BARU ---
         prompt = (
             "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu mempertimbangkan kekuatan tren serta konfirmasi volume.\n\n"
             f"ASET: {symbol}\n\n"
@@ -202,18 +202,18 @@ def get_gemini_analysis(technical_data_report, symbol):
             "DATA TEKNIS YANG DISEDIAKAN:\n"
             f"{technical_data_report}\n\n"
             "TUGAS: Lakukan analisis top-down yang komprehensif. **Sangat penting untuk mengintegrasikan data ADX dan Volume ke dalam analisis Anda di setiap timeframe.**\n"
-            "1.  **Analisis Timeframe Daily (Tren Makro & Kekuatan):** Tentukan tren utama berdasarkan EMA. Gunakan ADX untuk mengukur apakah tren ini kuat (ADX > 25) atau sedang melemah/ranging. Gunakan volume untuk konfirmasi.\n"
-            "2.  **Analisis Timeframe H4 (Struktur & Area Kunci):** Identifikasi struktur pasar (impulsif/korektif). Petakan area demand/supply kunci menggunakan level Fibonacci. Apakah pullback saat ini didukung oleh volume yang menurun (menandakan koreksi sehat)?\n"
-            "3.  **Analisis Timeframe H1 (Sinyal Entri & Konfirmasi):** Jelaskan sinyal konfirmasi yang Anda tunggu di H1 saat harga memasuki area kunci H4. Cari divergensi RSI, peningkatan volume saat pembalikan, atau candle pattern yang valid.\n"
-            "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi). **Wajib memasukkan ADX atau Volume sebagai salah satu faktor.** Contoh: 'Tren Daily bullish dengan ADX > 30, pullback ke Fibo 61.8% di H4 dengan volume menurun, dan potensi bullish divergence di H1.'\n"
+            "1.  **Analisis Timeframe 4 Jam (Tren Makro & Kekuatan):** Tentukan tren utama berdasarkan EMA. Gunakan ADX untuk mengukur apakah tren ini kuat (ADX > 25) atau sedang melemah/ranging. Gunakan volume untuk konfirmasi.\n"
+            "2.  **Analisis Timeframe 1 Jam (Struktur & Area Kunci):** Identifikasi struktur pasar (impulsif/korektif). Petakan area demand/supply kunci menggunakan level Fibonacci. Apakah pullback saat ini didukung oleh volume yang menurun (menandakan koreksi sehat)?\n"
+            "3.  **Analisis Timeframe 15 Menit (Sinyal Entri & Konfirmasi):** Jelaskan sinyal konfirmasi yang Anda tunggu di 15M saat harga memasuki area kunci 1H. Cari divergensi RSI, peningkatan volume saat pembalikan, atau candle pattern yang valid.\n"
+            "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi). **Wajib memasukkan ADX atau Volume sebagai salah satu faktor.** Contoh: 'Tren 4H bullish dengan ADX > 30, pullback ke Fibo 61.8% di 1H dengan volume menurun, dan potensi bullish divergence di 15M.'\n"
         	"5.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
         	"6.  **Rencana Trading (Trade Plan):** Buat satu rencana trading (BUY LIMIT atau SELL LIMIT) dengan level Entry, Stop Loss (SL), dan dua Take Profit (TP1, TP2) yang presisi dan logis berdasarkan analisis.\n\n"
             "FORMAT OUTPUT: Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan struktur berikut:\n"
             "{\n"
             "  \"analysis\": {\n"
-            "    \"daily_trend\": \"...\",\n"
-            "    \"h4_structure\": \"...\",\n"
-            "    \"h1_confirmation\": \"...\",\n"
+            "    \"h4_trend\": \"...\",\n"
+            "    \"h1_structure\": \"...\",\n"
+            "    \"m15_confirmation\": \"...\",\n"
             "    \"confluence_factors\": \"...\",\n"
             "    \"summary\": \"...\"\n"
             "  },\n"
@@ -256,9 +256,9 @@ def format_analysis_message(analysis, symbol, current_price):
         f"*Harga Saat Ini: ${current_price:,.2f}*\n"
         f"----------------------------------------\n\n"
         f"*Analisis Multi-Timeframe:*\n\n"
-        f"🗓️ *Daily (Tren & Kekuatan):* _{analisis.get('daily_trend', 'N/A')}_\n\n"
-        f"🕓 *H4 (Struktur & Volume):* _{analisis.get('h4_structure', 'N/A')}_\n\n"
-        f"🕐 *H1 (Konfirmasi Entri):* _{analisis.get('h1_confirmation', 'N/A')}_\n\n"
+        f"🕓 *4 Jam (Tren & Kekuatan):* _{analisis.get('h4_trend', 'N/A')}_\n\n"
+        f"🕐 *1 Jam (Struktur & Volume):* _{analisis.get('h1_structure', 'N/A')}_\n\n"
+        f"⏱️ *15 Menit (Konfirmasi Entri):* _{analisis.get('m15_confirmation', 'N/A')}_\n\n"
         f"*🎯 Konfluensi Sinyal Utama:*\n_{analisis.get('confluence_factors', 'N/A')}_\n\n"
         f"----------------------------------------\n\n"
         f"📌 *SINTESIS & RENCANA TRADING*\n\n"
@@ -318,3 +318,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
