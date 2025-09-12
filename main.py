@@ -31,7 +31,7 @@ CONFIG = {
         'adx': {'length': 14},
         'volume_profile': {'ma_length': 21} # Analisis volume vs moving average-nya
     },
-    'fibonacci_timeframe': '1h', # Timeframe acuan untuk Fibonacci
+    'fibonacci_timeframe': '15m', # Timeframe acuan untuk Fibonacci
     'fibonacci_swing_candles': 60 # Jumlah candle untuk mencari swing high/low
 }
 
