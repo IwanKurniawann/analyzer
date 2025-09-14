@@ -40,7 +40,7 @@ CONFIG = {
     },
     'fibonacci_timeframe': '15m',
     'fibonacci_swing_candles': 60,
-    'gemini_model': 'gemini-1.5-flash-latest' # Model AI bisa diubah di sini
+    'gemini_model': 'gemini-2.0-flash' # Model AI bisa diubah di sini
 }
 
 # --- KREDENSIAL ---
