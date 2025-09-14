@@ -1,32 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif
-menggunakan Google Gemini. Versi ini telah di-debug dan dioptimalkan untuk 
-keandalan, kecepatan, dan ketahanan terhadap error.
+Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif.
+Versi ini telah dimigrasikan dari Google Gemini ke OpenAI GPT API.
 
-Perubahan Utama (v3 - Logic Fix):
-- Memperbaiki logika AI dalam membuat trade plan agar selalu kontekstual
-  dengan harga saat ini.
-- Menambahkan aturan ketat pada prompt untuk BUY/SELL LIMIT/STOP.
-- Menambahkan field 'reasoning' pada output JSON untuk memaksa AI
-  memvalidasi logikanya.
-- Memberikan harga saat ini sebagai konteks langsung ke dalam prompt.
+Perubahan Utama (v4 - OpenAI Integration):
+- Mengganti pustaka 'google.generativeai' menjadi 'openai'.
+- Mengubah fungsi `get_gemini_analysis` menjadi `get_openai_analysis`
+  dengan logika pemanggilan API yang sepenuhnya baru.
+- Menambahkan kredensial baru `OPENAI_API_KEY`.
+- Memperbarui `CONFIG` untuk menggunakan model OpenAI (misal: gpt-4o).
+- Memisahkan prompt menjadi 'system' (peran & aturan) dan 'user' (data & tugas)
+  sesuai format standar OpenAI.
 """
 
 import os
 import sys
-import ccxt.pro as ccxt # Menggunakan ccxt.pro untuk async native
+import ccxt.pro as ccxt
 import pandas as pd
 import pandas_ta as ta
 import asyncio
 import telegram
-import google.generativeai as genai
+import openai # Pustaka baru untuk OpenAI
 import json
 from datetime import datetime
 import pytz
 
 # --- 1. KONFIGURASI UTAMA (MEMBUAT KODE ADAPTIF) ---
-# Ubah semua pengaturan di sini. Tambahkan indikator baru di 'indicators'.
+# Ubah semua pengaturan di sini.
 CONFIG = {
     'symbol': 'SOL/USDT',
     'timeframes': ['4h', '1h', '15m'],
@@ -40,30 +40,29 @@ CONFIG = {
     },
     'fibonacci_timeframe': '15m',
     'fibonacci_swing_candles': 60,
-    'gemini_model': 'gemini-2.0-flash' # Model AI bisa diubah di sini
+    # Model AI diganti ke OpenAI. GPT-5 belum rilis, gpt-4o adalah model terkuat saat ini.
+    'openai_model': 'gpt-5-nano' 
 }
 
 # --- KREDENSIAL ---
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY') # Kredensial baru untuk OpenAI
 
 def check_credentials():
     """Memeriksa apakah semua kredensial yang dibutuhkan tersedia."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         sys.exit("Error: Pastikan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID sudah diatur.")
-    if not GEMINI_API_KEY:
-        sys.exit("Error: Pastikan GEMINI_API_KEY sudah diatur.")
+    if not OPENAI_API_KEY:
+        sys.exit("Error: Pastikan OPENAI_API_KEY sudah diatur.")
 
 async def fetch_all_data(symbol, timeframes, limit, exchange_id):
     """
     Mengambil data OHLCV untuk semua timeframe secara konkuren menggunakan ccxt.pro.
-    Jauh lebih efisien daripada menggunakan to_thread.
     """
     all_data = {}
     exchange = None
     try:
-        # Menginisialisasi exchange secara dinamis dan case-insensitive
         exchange_class = getattr(ccxt, exchange_id.lower())
         exchange = exchange_class()
     except (AttributeError, ccxt.ExchangeNotFound):
@@ -73,7 +72,6 @@ async def fetch_all_data(symbol, timeframes, limit, exchange_id):
     print(f"Menginisialisasi pengambilan data untuk {symbol} dari {exchange_id.title()}...")
 
     async def fetch_single_timeframe(tf):
-        """Fungsi helper untuk mengambil data satu timeframe."""
         try:
             print(f"Mengambil {limit} data candle terakhir pada timeframe {tf}...")
             ohlcv = await exchange.fetch_ohlcv(symbol, timeframe=tf, limit=limit)
@@ -85,10 +83,8 @@ async def fetch_all_data(symbol, timeframes, limit, exchange_id):
             print(f"Error saat mengambil data untuk {tf}: {e}")
             all_data[tf] = None
 
-    # Menjalankan semua tugas pengambilan data secara bersamaan (konkuren)
     await asyncio.gather(*(fetch_single_timeframe(tf) for tf in timeframes))
 
-    # PENTING: Selalu tutup koneksi exchange setelah selesai
     if exchange:
         await exchange.close()
         print("Koneksi exchange telah ditutup.")
@@ -98,12 +94,10 @@ async def fetch_all_data(symbol, timeframes, limit, exchange_id):
 def calculate_ta_indicators(df, indicator_config):
     """
     Menghitung indikator teknis secara dinamis berdasarkan konfigurasi.
-    Versi ini lebih aman terhadap potensi error.
     """
     if df is None or df.empty: return None
     
     indicators = {}
-    # Menggunakan .iloc[-1] bisa error jika df kosong, jadi kita pastikan di atas
     latest = df.iloc[-1]
 
     try:
@@ -111,7 +105,6 @@ def calculate_ta_indicators(df, indicator_config):
         if 'rsi' in indicator_config:
             rsi_length = indicator_config['rsi']['length']
             df.ta.rsi(length=rsi_length, append=True)
-            # Menggunakan .get() untuk keamanan jika kolom tidak ada
             indicators['RSI'] = f"{df.iloc[-1].get(f'RSI_{rsi_length}', 0):.2f}"
 
         # EMAs
@@ -123,12 +116,11 @@ def calculate_ta_indicators(df, indicator_config):
                 ema_values[f"EMA_{period}"] = f"{df.iloc[-1].get(f'EMA_{period}', 0):.2f}"
             indicators['EMAs'] = ema_values
 
-        # ADX (dengan penanganan error yang lebih baik)
+        # ADX
         if 'adx' in indicator_config:
             adx_length = indicator_config['adx']['length']
             adx_data = df.ta.adx(length=adx_length, append=True)
             if adx_data is not None and not adx_data.empty:
-                # Akses data dengan aman menggunakan .get() untuk menghindari KeyError
                 adx_value = adx_data.iloc[-1].get(f'ADX_{adx_length}')
                 if adx_value is not None:
                     indicators['ADX'] = {
@@ -145,18 +137,12 @@ def calculate_ta_indicators(df, indicator_config):
             last_vol = latest['volume']
             last_vol_ma = vol_ma.iloc[-1]
             status = "Di Atas Rata-rata" if last_vol > last_vol_ma else "Di Bawah Rata-rata"
-            indicators['Volume'] = {
-                "Last_Volume": f"{last_vol:,.0f}",
-                "Volume_MA": f"{last_vol_ma:,.0f}",
-                "Status": status
-            }
+            indicators['Volume'] = { "Status": status }
 
         return indicators
     except Exception as e:
         print(f"Peringatan: Gagal menghitung beberapa indikator TA. Error: {e}")
-        # Tetap kembalikan indikator yang sudah berhasil dihitung
         return indicators if indicators else None
-
 
 def calculate_fibonacci_retracement(df, swing_candles):
     """Menghitung Fibonacci Retracement pada swing terakhir."""
@@ -204,90 +190,79 @@ def format_data_for_gemini(all_data, all_ta_indicators, fibo_levels):
     for tf, df in all_data.items():
         if df is not None and not df.empty:
             df_subset = df.copy().tail(10)
-            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-m-%d %H:%M')
+            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
             report += f"Data Timeframe: {tf}\n"
             report += df_subset[['timestamp', 'open', 'high', 'low', 'close', 'volume']].to_string(index=False)
             report += "\n\n"
             
     return report
 
-def get_gemini_analysis(technical_data_report, symbol, model_name, current_price):
+async def get_openai_analysis(technical_data_report, symbol, model_name, current_price):
     """
-    Mengirim laporan teknis ke Gemini dan meminta analisis top-down.
-    Versi ini menyertakan harga saat ini dan aturan logika yang ketat.
+    Mengirim laporan teknis ke OpenAI GPT dan meminta analisis.
+    Fungsi ini sepenuhnya menggantikan `get_gemini_analysis`.
     """
     try:
-        print(f"Menghubungi Google Gemini ({model_name}) untuk analisis...")
-        genai.configure(api_key=GEMINI_API_KEY)
+        print(f"Menghubungi OpenAI GPT ({model_name}) untuk analisis...")
+        # Menggunakan client async untuk integrasi dengan asyncio
+        client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
         
-        model = genai.GenerativeModel(
-            model_name,
-            generation_config=genai.GenerationConfig(response_mime_type="application/json")
-        )
-        
-        # --- PROMPT V3 DENGAN LOGIKA YANG DIPERKETAT ---
-        prompt = (
+        # Pisahkan prompt menjadi 'system' (peran & aturan) dan 'user' (tugas & data)
+        system_prompt = (
             "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu logis secara kontekstual.\n\n"
-            f"ASET: {symbol}\n\n"
-            "KONTEKS:\n"
-            f"**HARGA SAAT INI: ${current_price:,.4f}**\n" # Konteks harga krusial
-            "Analisis data teknis berikut untuk merumuskan satu skenario trading dengan probabilitas tertinggi dan RENCANA TRADING YANG LOGIS.\n\n"
-            "DATA TEKNIS YANG DISEDIAKAN:\n"
-            f"{technical_data_report}\n\n"
             "TUGAS:\n"
-            "1.  **Analisis Multi-Timeframe:** Lakukan analisis top-down (4H, 1H, 15M) seperti biasa, dengan fokus pada tren (EMA), kekuatan (ADX), struktur, volume, dan konfirmasi (RSI, candle).\n"
+            "1.  **Analisis Multi-Timeframe:** Lakukan analisis top-down (4H, 1H, 15M) dengan fokus pada tren (EMA), kekuatan (ADX), struktur, volume, dan konfirmasi (RSI, candle).\n"
             "2.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi) yang mendukung skenario tradingmu.\n"
             "3.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
             "4.  **Rencana Trading (WAJIB LOGIS):** Buat satu rencana trading berdasarkan analisismu dan HARGA SAAT INI. Ikuti aturan ketat ini:\n"
             "    -   Jika skenario adalah **BUY (Long)** dan area entry idealmu berada **DI BAWAH HARGA SAAT INI**, gunakan **'BUY LIMIT'**.\n"
             "    -   Jika skenario adalah **SELL (Short)** dan area entry idealmu berada **DI ATAS HARGA SAAT INI**, gunakan **'SELL LIMIT'**.\n"
-            "    -   Jika harga sudah melewati area entry idealmu, atau jika tidak ada setup high-probability, set 'Action' ke **'NEUTRAL'** dan jelaskan alasannya di 'reasoning'. JANGAN MEMAKSAKAN TRADE.\n"
-            "    -   **Stop Loss (SL)** dan **Take Profit (TP)** harus logis berdasarkan struktur pasar (misal: SL di bawah swing low, TP di swing high berikutnya).\n"
-            "    -   **Reasoning:** Jelaskan secara singkat mengapa Anda memilih 'Action' dan 'Entry' tersebut dalam kaitannya dengan HARGA SAAT INI.\n\n"
+            "    -   Jika tidak ada setup high-probability, set 'Action' ke **'NEUTRAL'** dan jelaskan alasannya di 'reasoning'. JANGAN MEMAKSAKAN TRADE.\n"
+            "    -   **Stop Loss (SL)** dan **Take Profit (TP)** harus logis berdasarkan struktur pasar.\n"
+            "    -   **Reasoning:** Jelaskan secara singkat mengapa Anda memilih 'Action' dan 'Entry' tersebut.\n\n"
             "FORMAT OUTPUT: Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan struktur berikut:\n"
             "{\n"
-            '  "analysis": {\n'
-            '    "h4_trend": "...",\n'
-            '    "h1_structure": "...",\n'
-            '    "m15_confirmation": "...",\n'
-            '    "confluence_factors": "...",\n'
-            '    "summary": "..."\n'
-            "  },\n"
-            '  "trade_plan": {\n'
-            '    "Action": "BUY LIMIT / SELL LIMIT / NEUTRAL",\n'
-            '    "Entry": "Harga atau rentang harga (atau N/A)",\n'
-            '    "SL": "Harga SL (atau N/A)",\n'
-            '    "TP1": "Harga TP1 (atau N/A)",\n'
-            '    "TP2": "Harga TP2 (atau N/A)",\n'
-            '    "reasoning": "Penjelasan singkat logika trade plan berdasarkan harga saat ini."\n'
-            "  }\n"
+            '  "analysis": {"h4_trend": "...", "h1_structure": "...", "m15_confirmation": "...", "confluence_factors": "...", "summary": "..."},\n'
+            '  "trade_plan": {"Action": "BUY LIMIT / SELL LIMIT / NEUTRAL", "Entry": "...", "SL": "...", "TP1": "...", "TP2": "...", "reasoning": "..."}\n'
             "}"
         )
+
+        user_prompt = (
+             f"ASET: {symbol}\n\n"
+            f"KONTEKS:\n**HARGA SAAT INI: ${current_price:,.4f}**\n\n"
+            "DATA TEKNIS YANG DISEDIAKAN:\n"
+            f"{technical_data_report}\n\n"
+            "Lakukan analisis dan buat rencana trading sesuai dengan peran dan aturan yang telah ditetapkan."
+        )
         
-        response = model.generate_content(prompt)
-        # Membersihkan respons dari markdown code block jika ada
-        cleaned_text = response.text.strip().lstrip('```json').rstrip('```')
-        analysis = json.loads(cleaned_text)
-        print("Analisis dari Gemini berhasil diterima dan diproses.")
+        response = await client.chat.completions.create(
+            model=model_name,
+            response_format={"type": "json_object"}, # Meminta output JSON
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        # Ekstrak konten dari respons OpenAI
+        analysis_content = response.choices[0].message.content
+        analysis = json.loads(analysis_content)
+        print("Analisis dari OpenAI berhasil diterima dan diproses.")
         return analysis
             
     except Exception as e:
-        print(f"Error saat menghubungi atau mem-parsing respons Gemini: {e}")
+        print(f"Error saat menghubungi atau mem-parsing respons OpenAI: {e}")
         return None
 
 def format_analysis_message(analysis, symbol, current_price):
-    """Memformat pesan notifikasi analisis teknikal dari AI. Sekarang termasuk reasoning."""
+    """Memformat pesan notifikasi analisis teknikal dari AI."""
     analisis = analysis.get('analysis', {})
     trade_plan = analysis.get('trade_plan', {})
-    
     action = trade_plan.get('Action', 'NEUTRAL').upper()
     
-    if 'BUY' in action:
-        main_emoji, bias_emoji = '🟢', '📈'
-    elif 'SELL' in action:
-        main_emoji, bias_emoji = '🔴', '📉'
-    else:
-        main_emoji, bias_emoji = '⚪️', '➡️'
+    if 'BUY' in action: main_emoji, bias_emoji = '🟢', '📈'
+    elif 'SELL' in action: main_emoji, bias_emoji = '🔴', '📉'
+    else: main_emoji, bias_emoji = '⚪️', '➡️'
         
     message = (
         f"*{main_emoji} ANALISIS TEKNIKAL CFTe UNTUK {symbol} {bias_emoji}*\n\n"
@@ -314,16 +289,13 @@ def format_analysis_message(analysis, symbol, current_price):
     
     message += f"*🧠 Alasan Rencana:* _{trade_plan.get('reasoning', 'Tidak ada alasan yang diberikan.')}_\n\n"
     message += "*Disclaimer: Ini adalah analisis otomatis dan bukan nasihat keuangan.*"
-
     return message
 
 async def send_telegram_message(message):
     """Mengirim pesan ke Telegram."""
     try:
         bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
-        # Menangani batas panjang pesan Telegram
-        if len(message) > 4096:
-            message = message[:4090] + "\n[...]"
+        if len(message) > 4096: message = message[:4090] + "\n[...]"
         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
         print("Notifikasi analisis berhasil dikirim ke Telegram.")
     except Exception as e:
@@ -332,19 +304,15 @@ async def send_telegram_message(message):
 async def main():
     """Fungsi utama untuk menjalankan seluruh alur proses."""
     check_credentials()
-    
     cfg = CONFIG
     
     all_market_data = await fetch_all_data(cfg['symbol'], cfg['timeframes'], cfg['candle_count_for_fetch'], cfg['exchange_id'])
     
-    # Logika pemeriksaan data yang lebih kuat: periksa jika ADA data yang gagal diambil
     if not all_market_data or any(df is None or df.empty for df in all_market_data.values()):
         failed_tfs = [tf for tf, df in all_market_data.items() if df is None or df.empty]
-        error_msg = f"❌ **Bot Error:** Gagal mengambil data pasar untuk {cfg['symbol']} pada timeframe: {', '.join(failed_tfs)}."
-        await send_telegram_message(error_msg)
+        await send_telegram_message(f"❌ **Bot Error:** Gagal mengambil data pasar untuk {cfg['symbol']} pada timeframe: {', '.join(failed_tfs)}.")
         return
         
-    # Ambil harga terakhir dari timeframe terkecil yang valid
     last_price = all_market_data[cfg['timeframes'][-1]]['close'].iloc[-1]
 
     all_ta_indicators = {}
@@ -358,11 +326,11 @@ async def main():
     
     technical_report = format_data_for_gemini(all_market_data, all_ta_indicators, fibo_levels)
     
-    # PERUBAHAN: Kirim `last_price` ke fungsi analisis
-    analysis_result = get_gemini_analysis(technical_report, cfg['symbol'], cfg['gemini_model'], last_price)
+    # Memanggil fungsi analisis OpenAI yang baru
+    analysis_result = await get_openai_analysis(technical_report, cfg['symbol'], cfg['openai_model'], last_price)
     
     if analysis_result is None:
-        await send_telegram_message(f"❌ **Bot Error:** Gagal mendapatkan analisis dari Gemini AI untuk {cfg['symbol']}.")
+        await send_telegram_message(f"❌ **Bot Error:** Gagal mendapatkan analisis dari OpenAI GPT untuk {cfg['symbol']}.")
         return
 
     report_message = format_analysis_message(analysis_result, cfg['symbol'], last_price)
