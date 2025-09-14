@@ -197,7 +197,7 @@ def get_gemini_analysis(technical_data_report, symbol):
         
     # --- PROMPT YANG TELAH DI-UPGRADE UNTUK TF BARU ---
 
-    prompt = (
+        prompt = (
 
         "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu mempertimbangkan kekuatan tren serta konfirmasi volume.\n\n"
 
@@ -257,7 +257,7 @@ def get_gemini_analysis(technical_data_report, symbol):
 
         "}"
 
-    )
+        )
         
         response = model.generate_content(prompt)
         cleaned_text = response.text.strip().replace('```json', '').replace('```', '')
