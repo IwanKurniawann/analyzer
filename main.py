@@ -4,11 +4,13 @@ Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif
 menggunakan Google Gemini. Versi ini telah di-debug dan dioptimalkan untuk 
 keandalan, kecepatan, dan ketahanan terhadap error.
 
-Perubahan Utama:
-- Menggunakan ccxt.pro untuk pengambilan data asinkron (lebih cepat).
-- Penanganan error yang lebih kuat untuk data yang hilang & perhitungan indikator.
-- Konfigurasi yang lebih fleksibel (model AI bisa diubah).
-- Koneksi ke exchange ditutup dengan benar untuk menghindari memory leak.
+Perubahan Utama (v3 - Logic Fix):
+- Memperbaiki logika AI dalam membuat trade plan agar selalu kontekstual
+  dengan harga saat ini.
+- Menambahkan aturan ketat pada prompt untuk BUY/SELL LIMIT/STOP.
+- Menambahkan field 'reasoning' pada output JSON untuk memaksa AI
+  memvalidasi logikanya.
+- Memberikan harga saat ini sebagai konteks langsung ke dalam prompt.
 """
 
 import os
@@ -38,7 +40,7 @@ CONFIG = {
     },
     'fibonacci_timeframe': '15m',
     'fibonacci_swing_candles': 60,
-    'gemini_model': 'gemini-2.0-flash' # Model AI bisa diubah di sini
+    'gemini_model': 'gemini-1.5-flash-latest' # Model AI bisa diubah di sini
 }
 
 # --- KREDENSIAL ---
@@ -202,16 +204,17 @@ def format_data_for_gemini(all_data, all_ta_indicators, fibo_levels):
     for tf, df in all_data.items():
         if df is not None and not df.empty:
             df_subset = df.copy().tail(10)
-            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
+            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-m-%d %H:%M')
             report += f"Data Timeframe: {tf}\n"
             report += df_subset[['timestamp', 'open', 'high', 'low', 'close', 'volume']].to_string(index=False)
             report += "\n\n"
             
     return report
 
-def get_gemini_analysis(technical_data_report, symbol, model_name):
+def get_gemini_analysis(technical_data_report, symbol, model_name, current_price):
     """
     Mengirim laporan teknis ke Gemini dan meminta analisis top-down.
+    Versi ini menyertakan harga saat ini dan aturan logika yang ketat.
     """
     try:
         print(f"Menghubungi Google Gemini ({model_name}) untuk analisis...")
@@ -222,19 +225,25 @@ def get_gemini_analysis(technical_data_report, symbol, model_name):
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
         )
         
+        # --- PROMPT V3 DENGAN LOGIKA YANG DIPERKETAT ---
         prompt = (
-            "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu mempertimbangkan kekuatan tren serta konfirmasi volume.\n\n"
+            "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu logis secara kontekstual.\n\n"
             f"ASET: {symbol}\n\n"
-            "KONTEKS: Analisis data teknis berikut untuk merumuskan satu skenario trading dengan probabilitas tertinggi.\n\n"
+            "KONTEKS:\n"
+            f"**HARGA SAAT INI: ${current_price:,.4f}**\n" # Konteks harga krusial
+            "Analisis data teknis berikut untuk merumuskan satu skenario trading dengan probabilitas tertinggi dan RENCANA TRADING YANG LOGIS.\n\n"
             "DATA TEKNIS YANG DISEDIAKAN:\n"
             f"{technical_data_report}\n\n"
-            "TUGAS: Lakukan analisis top-down yang komprehensif. **Sangat penting untuk mengintegrasikan data ADX dan Volume ke dalam analisis Anda di setiap timeframe.**\n"
-            "1.  **Analisis Timeframe 4 Jam (Tren Makro & Kekuatan):** Tentukan tren utama berdasarkan EMA. Gunakan ADX untuk mengukur apakah tren ini kuat (ADX > 25) atau sedang melemah/ranging. Gunakan volume untuk konfirmasi.\n"
-            "2.  **Analisis Timeframe 1 Jam (Struktur & Area Kunci):** Identifikasi struktur pasar (impulsif/korektif). Petakan area demand/supply kunci menggunakan level Fibonacci. Apakah pullback saat ini didukung oleh volume yang menurun (menandakan koreksi sehat)?\n"
-            "3.  **Analisis Timeframe 15 Menit (Sinyal Entri & Konfirmasi):** Jelaskan sinyal konfirmasi yang Anda tunggu di 15M saat harga memasuki area kunci 1H. Cari divergensi RSI, peningkatan volume saat pembalikan, atau candle pattern yang valid.\n"
-            "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi). **Wajib memasukkan ADX atau Volume sebagai salah satu faktor.** Contoh: 'Tren 4H bullish dengan ADX > 30, pullback ke Fibo 61.8% di 1H dengan volume menurun, dan potensi bullish divergence di 15M.'\n"
-            "5.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
-            "6.  **Rencana Trading (Trade Plan):** Buat satu rencana trading (BUY LIMIT atau SELL LIMIT) dengan level Entry, Stop Loss (SL), dan dua Take Profit (TP1, TP2) yang presisi dan logis berdasarkan analisis.\n\n"
+            "TUGAS:\n"
+            "1.  **Analisis Multi-Timeframe:** Lakukan analisis top-down (4H, 1H, 15M) seperti biasa, dengan fokus pada tren (EMA), kekuatan (ADX), struktur, volume, dan konfirmasi (RSI, candle).\n"
+            "2.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi) yang mendukung skenario tradingmu.\n"
+            "3.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
+            "4.  **Rencana Trading (WAJIB LOGIS):** Buat satu rencana trading berdasarkan analisismu dan HARGA SAAT INI. Ikuti aturan ketat ini:\n"
+            "    -   Jika skenario adalah **BUY (Long)** dan area entry idealmu berada **DI BAWAH HARGA SAAT INI**, gunakan **'BUY LIMIT'**.\n"
+            "    -   Jika skenario adalah **SELL (Short)** dan area entry idealmu berada **DI ATAS HARGA SAAT INI**, gunakan **'SELL LIMIT'**.\n"
+            "    -   Jika harga sudah melewati area entry idealmu, atau jika tidak ada setup high-probability, set 'Action' ke **'NEUTRAL'** dan jelaskan alasannya di 'reasoning'. JANGAN MEMAKSAKAN TRADE.\n"
+            "    -   **Stop Loss (SL)** dan **Take Profit (TP)** harus logis berdasarkan struktur pasar (misal: SL di bawah swing low, TP di swing high berikutnya).\n"
+            "    -   **Reasoning:** Jelaskan secara singkat mengapa Anda memilih 'Action' dan 'Entry' tersebut dalam kaitannya dengan HARGA SAAT INI.\n\n"
             "FORMAT OUTPUT: Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan struktur berikut:\n"
             "{\n"
             '  "analysis": {\n'
@@ -245,11 +254,12 @@ def get_gemini_analysis(technical_data_report, symbol, model_name):
             '    "summary": "..."\n'
             "  },\n"
             '  "trade_plan": {\n'
-            '    "Action": "BUY LIMIT / SELL LIMIT",\n'
-            '    "Entry": "Harga atau rentang harga",\n'
-            '    "SL": "Harga SL",\n'
-            '    "TP1": "Harga TP1",\n'
-            '    "TP2": "Harga TP2"\n'
+            '    "Action": "BUY LIMIT / SELL LIMIT / NEUTRAL",\n'
+            '    "Entry": "Harga atau rentang harga (atau N/A)",\n'
+            '    "SL": "Harga SL (atau N/A)",\n'
+            '    "TP1": "Harga TP1 (atau N/A)",\n'
+            '    "TP2": "Harga TP2 (atau N/A)",\n'
+            '    "reasoning": "Penjelasan singkat logika trade plan berdasarkan harga saat ini."\n'
             "  }\n"
             "}"
         )
@@ -266,7 +276,7 @@ def get_gemini_analysis(technical_data_report, symbol, model_name):
         return None
 
 def format_analysis_message(analysis, symbol, current_price):
-    """Memformat pesan notifikasi analisis teknikal dari AI."""
+    """Memformat pesan notifikasi analisis teknikal dari AI. Sekarang termasuk reasoning."""
     analisis = analysis.get('analysis', {})
     trade_plan = analysis.get('trade_plan', {})
     
@@ -291,13 +301,20 @@ def format_analysis_message(analysis, symbol, current_price):
         f"----------------------------------------\n\n"
         f"📌 *SINTESIS & RENCANA TRADING*\n\n"
         f"*{analisis.get('summary', 'N/A')}*\n\n"
-        f"  - **Aksi:** *{action}*\n"
-        f"  - **Area Entry:** *{trade_plan.get('Entry', 'N/A')}*\n"
-        f"  - **Take Profit 1:** *{trade_plan.get('TP1', 'N/A')}*\n"
-        f"  - **Take Profit 2:** *{trade_plan.get('TP2', 'N/A')}*\n"
-        f"  - **Stop Loss:** *{trade_plan.get('SL', 'N/A')}*\n\n"
-        f"*Disclaimer: Ini adalah analisis otomatis dan bukan nasihat keuangan.*"
     )
+
+    if action != 'NEUTRAL':
+        message += (
+            f"  - **Aksi:** *{action}*\n"
+            f"  - **Area Entry:** *{trade_plan.get('Entry', 'N/A')}*\n"
+            f"  - **Take Profit 1:** *{trade_plan.get('TP1', 'N/A')}*\n"
+            f"  - **Take Profit 2:** *{trade_plan.get('TP2', 'N/A')}*\n"
+            f"  - **Stop Loss:** *{trade_plan.get('SL', 'N/A')}*\n\n"
+        )
+    
+    message += f"*🧠 Alasan Rencana:* _{trade_plan.get('reasoning', 'Tidak ada alasan yang diberikan.')}_\n\n"
+    message += "*Disclaimer: Ini adalah analisis otomatis dan bukan nasihat keuangan.*"
+
     return message
 
 async def send_telegram_message(message):
@@ -341,7 +358,8 @@ async def main():
     
     technical_report = format_data_for_gemini(all_market_data, all_ta_indicators, fibo_levels)
     
-    analysis_result = get_gemini_analysis(technical_report, cfg['symbol'], cfg['gemini_model'])
+    # PERUBAHAN: Kirim `last_price` ke fungsi analisis
+    analysis_result = get_gemini_analysis(technical_report, cfg['symbol'], cfg['gemini_model'], last_price)
     
     if analysis_result is None:
         await send_telegram_message(f"❌ **Bot Error:** Gagal mendapatkan analisis dari Gemini AI untuk {cfg['symbol']}.")
