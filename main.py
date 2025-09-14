@@ -31,7 +31,7 @@ CONFIG = {
         'adx': {'length': 14},
         'volume_profile': {'ma_length': 21} # Analisis volume vs moving average-nya
     },
-    'fibonacci_timeframe': '5m', # Timeframe acuan untuk Fibonacci
+    'fibonacci_timeframe': '15m', # Timeframe acuan untuk Fibonacci
     'fibonacci_swing_candles': 60 # Jumlah candle untuk mencari swing high/low
 }
 
@@ -138,11 +138,11 @@ def calculate_fibonacci_retracement(df, swing_candles):
     if swing_high == swing_low: return None
 
     levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-    fibo_levels = {f"{level*100:.1f}%": f"{(swing_high - (swing_high - swing_low) * level):.2f}" for level in levels}
+    fibo_levels = {f"{level*100:.2f}%": f"{(swing_high - (swing_high - swing_low) * level):.2f}" for level in levels}
         
     return {
-        "swing_high": f"{swing_high:.2f}",
-        "swing_low": f"{swing_low:.2f}",
+        "swing_high": f"{swing_high:.4f}",
+        "swing_low": f"{swing_low:.4f}",
         "levels": fibo_levels
     }
 
@@ -190,42 +190,74 @@ def get_gemini_analysis(technical_data_report, symbol):
         genai.configure(api_key=GEMINI_API_KEY)
         
         model = genai.GenerativeModel(
-            'gemini-1.5-flash', # Menggunakan model yang lebih baru dan efisien
+            'gemini-2.0-flash', # Menggunakan model yang lebih baru dan efisien
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
         )
         
-        # --- PROMPT YANG TELAH DI-UPGRADE UNTUK TF BARU ---
-        prompt = (
-            "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu mempertimbangkan kekuatan tren serta konfirmasi volume.\n\n"
-            f"ASET: {symbol}\n\n"
-            "KONTEKS: Analisis data teknis berikut untuk merumuskan satu skenario trading dengan probabilitas tertinggi.\n\n"
-            "DATA TEKNIS YANG DISEDIAKAN:\n"
-            f"{technical_data_report}\n\n"
-            "TUGAS: Lakukan analisis top-down yang komprehensif. **Sangat penting untuk mengintegrasikan data ADX dan Volume ke dalam analisis Anda di setiap timeframe.**\n"
-            "1.  **Analisis Timeframe 4 Jam (Tren Makro & Kekuatan):** Tentukan tren utama berdasarkan EMA. Gunakan ADX untuk mengukur apakah tren ini kuat (ADX > 25) atau sedang melemah/ranging. Gunakan volume untuk konfirmasi.\n"
-            "2.  **Analisis Timeframe 1 Jam (Struktur & Area Kunci):** Identifikasi struktur pasar (impulsif/korektif). Petakan area demand/supply kunci menggunakan level Fibonacci. Apakah pullback saat ini didukung oleh volume yang menurun (menandakan koreksi sehat)?\n"
-            "3.  **Analisis Timeframe 15 Menit (Sinyal Entri & Konfirmasi):** Jelaskan sinyal konfirmasi yang Anda tunggu di 15M saat harga memasuki area kunci 1H. Cari divergensi RSI, peningkatan volume saat pembalikan, atau candle pattern yang valid.\n"
-            "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi). **Wajib memasukkan ADX atau Volume sebagai salah satu faktor.** Contoh: 'Tren 4H bullish dengan ADX > 30, pullback ke Fibo 61.8% di 1H dengan volume menurun, dan potensi bullish divergence di 15M.'\n"
-        	"5.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
-        	"6.  **Rencana Trading (Trade Plan):** Buat satu rencana trading (BUY LIMIT atau SELL LIMIT) dengan level Entry, Stop Loss (SL), dan dua Take Profit (TP1, TP2) yang presisi dan logis berdasarkan analisis.\n\n"
-            "FORMAT OUTPUT: Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan struktur berikut:\n"
-            "{\n"
-            "  \"analysis\": {\n"
-            "    \"h4_trend\": \"...\",\n"
-            "    \"h1_structure\": \"...\",\n"
-            "    \"m15_confirmation\": \"...\",\n"
-            "    \"confluence_factors\": \"...\",\n"
-            "    \"summary\": \"...\"\n"
-            "  },\n"
-            "  \"trade_plan\": {\n"
-            "    \"Action\": \"BUY LIMIT / SELL LIMIT\",\n"
-            "    \"Entry\": \"Harga atau rentang harga\",\n"
-            "    \"SL\": \"Harga SL\",\n"
-            "    \"TP1\": \"Harga TP1\",\n"
-            "    \"TP2\": \"Harga TP2\"\n"
-            "  }\n"
-            "}"
-        )
+        
+    # --- PROMPT YANG TELAH DI-UPGRADE UNTUK TF BARU ---
+
+    prompt = (
+
+        "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit. Analisis Anda tajam, metodis, dan selalu mempertimbangkan kekuatan tren serta konfirmasi volume.\n\n"
+
+        f"ASET: {symbol}\n\n"
+
+        "KONTEKS: Analisis data teknis berikut untuk merumuskan satu skenario trading dengan probabilitas tertinggi.\n\n"
+
+        "DATA TEKNIS YANG DISEDIAKAN:\n"
+
+        f"{technical_data_report}\n\n"
+
+        "TUGAS: Lakukan analisis top-down yang komprehensif. **Sangat penting untuk mengintegrasikan data ADX dan Volume ke dalam analisis Anda di setiap timeframe.**\n"
+
+        "1.  **Analisis Timeframe 4 Jam (Tren Makro & Kekuatan):** Tentukan tren utama berdasarkan EMA. Gunakan ADX untuk mengukur apakah tren ini kuat (ADX > 25) atau sedang melemah/ranging. Gunakan volume untuk konfirmasi.\n"
+
+        "2.  **Analisis Timeframe 1 Jam (Struktur & Area Kunci):** Identifikasi struktur pasar (impulsif/korektif). Petakan area demand/supply kunci menggunakan level Fibonacci. Apakah pullback saat ini didukung oleh volume yang menurun (menandakan koreksi sehat)?\n"
+
+        "3.  **Analisis Timeframe 15 Menit (Sinyal Entri & Konfirmasi):** Jelaskan sinyal konfirmasi yang Anda tunggu di 15M saat harga memasuki area kunci 1H. Cari divergensi RSI, peningkatan volume saat pembalikan, atau candle pattern yang valid.\n"
+
+        "4.  **Sintesis & Konfluensi:** Sebutkan minimal 3 faktor teknikal yang bertemu (konfluensi). **Wajib memasukkan ADX atau Volume sebagai salah satu faktor.** Contoh: 'Tren 4H bullish dengan ADX > 30, pullback ke Fibo 61.8% di 1H dengan volume menurun, dan potensi bullish divergence di 15M.'\n"
+
+        "5.  **Ringkasan Analisis:** Berikan kesimpulan analisis dalam satu kalimat yang padat dan jelas.\n"
+
+        "6.  **Rencana Trading (Trade Plan):** Buat satu rencana trading (BUY LIMIT atau SELL LIMIT) dengan level Entry, Stop Loss (SL), dan dua Take Profit (TP1, TP2, TP3) yang presisi dan logis berdasarkan analisis.\n\n"
+
+        "FORMAT OUTPUT: Berikan output HANYA dalam format JSON yang valid. WAJIB ISI SEMUA KUNCI. Gunakan struktur berikut:\n"
+
+        "{\n"
+
+        '  "analysis": {\n'
+
+        '    "h4_trend": "...",\n'
+
+        '    "h1_structure": "...",\n'
+
+        '    "m15_confirmation": "...",\n'
+
+        '    "confluence_factors": "...",\n'
+
+        '    "summary": "..."\n'
+
+        "  },\n"
+
+        '  "trade_plan": {\n'
+
+        '    "Action": "BUY LIMIT / SELL LIMIT",\n'
+
+        '    "Entry": "Harga atau rentang harga",\n'
+
+        '    "SL": "Harga SL",\n'
+
+        '    "TP1": "Harga TP1",\n'
+
+        '    "TP2": "Harga TP2"\n'
+
+        "  }\n"
+
+        "}"
+
+    )
         
         response = model.generate_content(prompt)
         cleaned_text = response.text.strip().replace('```json', '').replace('```', '')
@@ -253,7 +285,7 @@ def format_analysis_message(analysis, symbol, current_price):
         
     message = (
         f"*{main_emoji} ANALISIS TEKNIKAL CFTe UNTUK {symbol} {bias_emoji}*\n\n"
-        f"*Harga Saat Ini: ${current_price:,.2f}*\n"
+        f"*Harga Saat Ini: ${current_price:,.4f}*\n"
         f"----------------------------------------\n\n"
         f"*Analisis Multi-Timeframe:*\n\n"
         f"🕓 *4 Jam (Tren & Kekuatan):* _{analisis.get('h4_trend', 'N/A')}_\n\n"
