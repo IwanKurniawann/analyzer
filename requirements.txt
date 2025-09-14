@@ -1,5 +1,6 @@
 ccxt
 pandas
+openai
 python-telegram-bot
 pytz
 google-generativeai
