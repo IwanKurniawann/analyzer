@@ -1,287 +1,297 @@
 # -*- coding: utf-8 -*-
 """
-Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif.
-Versi ini telah di-refactor dengan prinsip-prinsip clean code untuk
-kemudahan pembacaan, pemeliharaan, dan skalabilitas.
-Menggunakan Groq API untuk analisis LLM yang cepat.
+Main script for generating a comprehensive market analysis report using the Groq API.
+This version is upgraded to be more adaptive and anticipatory by adding ADX
+and Volume Analysis, and uses a configuration-based structure.
 """
 
 import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
+import ccxt
 import pandas as pd
 import pandas_ta as ta
 import telegram
-from openai import AsyncOpenAI
-from ccxt.pro import kucoin, Exchange  # Impor exchange secara spesifik
+from groq import Groq
 
-# --- 1. KONFIGURASI & KONSTANTA ---
-# Konfigurasi dipisahkan untuk kemudahan pengelolaan.
-class Config:
-    """Menampung semua konfigurasi aplikasi."""
-    SYMBOL: str = 'SOL/USDT'
-    TIMEFRAMES: List[str] = ['4h', '1h', '15m']
-    EXCHANGE_ID: str = 'kucoin'
-    CANDLE_COUNT_FETCH: int = 1000
-    FIBONACCI_TIMEFRAME: str = '15m'
-    FIBONACCI_SWING_CANDLES: int = 60
-    GROQ_MODEL: str = 'llama3-8b-8192'
-
-    INDICATORS: Dict[str, Dict[str, Any]] = {
+# --- 1. MAIN CONFIGURATION (ADAPTIVE CODE) ---
+# All settings can be changed here. Add new indicators in 'indicators'.
+CONFIG = {
+    'symbol': 'SOL/USDT',
+    'timeframes': ['4h', '1h', '15m'],
+    'exchange_id': 'kucoin',
+    'candle_count_for_fetch': 1000,
+    'indicators': {
         'rsi': {'length': 14},
         'ema': {'lengths': [21, 50, 200]},
         'adx': {'length': 14},
-        'volume': {'ma_length': 21}
-    }
+        'volume_profile': {'ma_length': 21}
+    },
+    'fibonacci_timeframe': '15m',
+    'fibonacci_swing_candles': 60
+}
 
-# Kredensial diambil dari environment variables untuk keamanan.
-TELEGRAM_BOT_TOKEN: Optional[str] = os.getenv('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID: Optional[str] = os.getenv('TELEGRAM_CHAT_ID')
-GROQ_API_KEY: Optional[str] = os.getenv('GROQ_API_KEY')
+# --- CREDENTIALS & CONSTANTS ---
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+GROQ_MODEL = 'llama3-70b-8192'
 
-# Prompt untuk AI dipisahkan agar logika utama tetap bersih.
-SYSTEM_PROMPT = (
-    "PERAN: Anda adalah seorang Certified Financial Technician (CFTe) elit yang "
-    "metodis dan logis. Anda hanya membalas dalam format JSON yang valid.\n\n"
-    "TUGAS & ATURAN:\n"
-    "1. Lakukan analisis multi-timeframe (4H, 1H, 15M) pada data yang diberikan.\n"
-    "2. Identifikasi minimal 3 faktor konfluensi.\n"
-    "3. Buat satu rencana trading yang logis berdasarkan HARGA SAAT INI.\n"
-    "4. 'BUY LIMIT' hanya jika harga entry di bawah harga saat ini. 'SELL LIMIT' "
-    "hanya jika harga entry di atas harga saat ini.\n"
-    "5. Jika tidak ada setup yang jelas, gunakan 'NEUTRAL' dan jelaskan alasannya.\n"
-    "6. Berikan alasan singkat dan jelas untuk setiap rencana trading yang dibuat.\n\n"
-    "STRUKTUR JSON OUTPUT:\n"
-    '{"analysis": {"h4_trend": "...", "h1_structure": "...", "m15_confirmation": '
-    '"...", "confluence_factors": "...", "summary": "..."}, "trade_plan": {"Action": '
-    '"...", "Entry": "...", "SL": "...", "TP1": "...", "TP2": "...", "reasoning": "..."}}'
-)
+# Type alias for clarity
+OhlcvData = Dict[str, Optional[pd.DataFrame]]
+IndicatorData = Dict[str, Any]
 
-# --- 2. LAYANAN & FUNGSI UTILITAS ---
-# Fungsi-fungsi dikelompokkan berdasarkan tanggung jawabnya.
+def check_credentials() -> None:
+    """Checks for the presence of necessary credentials."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        sys.exit("Error: Ensure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set.")
+    if not GROQ_API_KEY:
+        sys.exit("Error: Ensure GROQ_API_KEY is set.")
+    print("Credentials successfully verified.")
 
-# --- Bagian Data Pasar ---
-async def fetch_market_data(
-    symbol: str, timeframes: List[str], limit: int, exchange_id: str
-) -> Dict[str, Optional[pd.DataFrame]]:
-    """Mengambil data OHLCV untuk semua timeframe secara konkuren."""
-    all_data: Dict[str, Optional[pd.DataFrame]] = {tf: None for tf in timeframes}
-    exchange: Exchange = kucoin()  # Inisialisasi exchange
-    print(f"Menginisialisasi pengambilan data untuk {symbol} dari {exchange.name}...")
+async def fetch_all_data(symbol: str, timeframes: List[str], limit: int, exchange_id: str) -> OhlcvData:
+    """Fetches OHLCV data for all specified timeframes from the selected exchange."""
+    all_data: OhlcvData = {}
+    try:
+        exchange_class = getattr(ccxt, exchange_id)
+        exchange = exchange_class()
+    except (AttributeError, ccxt.ExchangeNotFound):
+        print(f"Error: Exchange '{exchange_id}' not found or not supported by CCXT.")
+        return {}
 
-    async def fetch_single(tf: str):
+    print(f"Initializing data fetch for {symbol} from {exchange_id.title()}...")
+    for tf in timeframes:
         try:
-            print(f"Mengambil {limit} candle terakhir pada timeframe {tf}...")
-            ohlcv = await exchange.fetch_ohlcv(symbol, timeframe=tf, limit=limit)
+            print(f"Fetching last {limit} candles for timeframe {tf}...")
+            # Use asyncio.to_thread for blocking ccxt calls
+            ohlcv = await asyncio.to_thread(exchange.fetch_ohlcv, symbol, timeframe=tf, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             all_data[tf] = df
-            print(f"Data untuk {tf} berhasil diambil.")
+            print(f"Data for {tf} fetched successfully.")
         except Exception as e:
-            print(f"Error saat mengambil data untuk {tf}: {e}")
-
-    try:
-        await asyncio.gather(*(fetch_single(tf) for tf in timeframes))
-    finally:
-        await exchange.close()
-        print("Koneksi exchange telah ditutup.")
+            print(f"Error fetching data for {tf}: {e}")
+            all_data[tf] = None
     return all_data
 
-def calculate_technical_indicators(df: pd.DataFrame) -> Dict[str, Any]:
-    """Menghitung semua indikator teknis yang dikonfigurasi untuk satu DataFrame."""
-    indicators = {}
-    cfg = Config.INDICATORS
+def calculate_ta_indicators(df: pd.DataFrame, indicator_config: Dict[str, Any]) -> Optional[IndicatorData]:
+    """Calculates technical indicators dynamically based on the configuration."""
+    if df is None or df.empty:
+        return None
+
+    indicators: IndicatorData = {}
+    latest = df.iloc[-1]
+
     try:
         # RSI
-        rsi_cfg = cfg.get('rsi')
-        if rsi_cfg:
-            df.ta.rsi(length=rsi_cfg['length'], append=True)
-            indicators['RSI'] = f"{df.iloc[-1].get(f'RSI_{rsi_cfg['length']}', 0):.2f}"
+        if 'rsi' in indicator_config:
+            rsi_length = indicator_config['rsi']['length']
+            df.ta.rsi(length=rsi_length, append=True)
+            indicators['RSI'] = f"{latest.get(f'RSI_{rsi_length}', 0):.2f}"
 
-        # EMA
-        ema_cfg = cfg.get('ema')
-        if ema_cfg:
-            ema_values = {}
-            for length in ema_cfg['lengths']:
-                df.ta.ema(length=length, append=True)
-                ema_values[f"EMA_{length}"] = f"{df.iloc[-1].get(f'EMA_{length}', 0):.2f}"
+        # EMAs
+        if 'ema' in indicator_config:
+            ema_lengths = indicator_config['ema']['lengths']
+            ema_values = {f"EMA_{p}": f"{df.iloc[-1].get(f'EMA_{p}', 0):.2f}" for p in ema_lengths}
+            df.ta.ema(lengths=ema_lengths, append=True)
             indicators['EMAs'] = ema_values
 
         # ADX
-        adx_cfg = cfg.get('adx')
-        if adx_cfg:
-            adx_data = df.ta.adx(length=adx_cfg['length'], append=True)
-            adx_value = adx_data.iloc[-1].get(f'ADX_{adx_cfg["length"]}') if adx_data is not None else None
-            status = "Tren Kuat" if adx_value and adx_value > 25 else "Tren Lemah / Ranging"
-            indicators['ADX'] = {"ADX": f"{adx_value:.2f}" if adx_value else "N/A", "Status": status}
+        if 'adx' in indicator_config:
+            adx_length = indicator_config['adx']['length']
+            adx_data = df.ta.adx(length=adx_length, append=True)
+            if adx_data is not None and not adx_data.empty:
+                adx_value = adx_data.iloc[-1].get(f'ADX_{adx_length}', 0)
+                indicators['ADX'] = {
+                    "ADX": f"{adx_value:.2f}",
+                    "Status": "Strong Trend" if adx_value > 25 else "Weak/Ranging Trend"
+                }
 
-        # Volume
-        vol_cfg = cfg.get('volume')
-        if vol_cfg:
-            vol_ma = df['volume'].rolling(window=vol_cfg['ma_length']).mean()
-            status = "Di Atas Rata-rata" if df['volume'].iloc[-1] > vol_ma.iloc[-1] else "Di Bawah Rata-rata"
-            indicators['Volume'] = {"Status": status}
+        # Volume Analysis
+        if 'volume_profile' in indicator_config:
+            vol_ma_len = indicator_config['volume_profile']['ma_length']
+            vol_ma = df['volume'].rolling(window=vol_ma_len).mean()
+            last_vol = latest['volume']
+            last_vol_ma = vol_ma.iloc[-1]
+            indicators['Volume'] = {
+                "Last_Volume": f"{last_vol:,.0f}",
+                "Volume_MA": f"{last_vol_ma:,.0f}",
+                "Status": "Above Average" if last_vol > last_vol_ma else "Below Average"
+            }
+        return indicators
     except Exception as e:
-        print(f"Peringatan: Gagal menghitung sebagian indikator TA. Error: {e}")
-    return indicators
-
-def calculate_fibonacci_levels(df: pd.DataFrame, swing_candles: int) -> Optional[Dict[str, Any]]:
-    """Menghitung level Fibonacci Retracement dari swing high/low terakhir."""
-    if len(df) < swing_candles: return None
-    recent_df = df.tail(swing_candles)
-    swing_high, swing_low = recent_df['high'].max(), recent_df['low'].min()
-    if swing_high == swing_low: return None
-    
-    levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-    fibo_levels = {f"{lvl*100:.1f}%": f"{(swing_high - (swing_high - swing_low) * lvl):.4f}" for lvl in levels}
-    return {"swing_high": f"{swing_high:.4f}", "swing_low": f"{swing_low:.4f}", "levels": fibo_levels}
-
-# --- Bagian Interaksi AI ---
-def format_report_for_ai(all_indicators: Dict[str, Any], fibo_levels: Optional[Dict[str, Any]]) -> str:
-    """Menyusun laporan data teks yang ringkas untuk dianalisis oleh AI."""
-    report = "Data teknis pasar untuk dianalisis:\n\n--- Ringkasan Indikator Teknis ---\n"
-    for tf, indicators in all_indicators.items():
-        if not indicators: continue
-        report += f"**Timeframe: {tf}**\n"
-        parts = []
-        if 'RSI' in indicators: parts.append(f"RSI: {indicators['RSI']}")
-        if 'EMAs' in indicators: parts.append(f"EMAs: {', '.join(f'{k}: {v}' for k, v in indicators['EMAs'].items())}")
-        if 'ADX' in indicators: parts.append(f"ADX: {indicators['ADX']['ADX']} ({indicators['ADX']['Status']})")
-        if 'Volume' in indicators: parts.append(f"Volume: {indicators['Volume']['Status']}")
-        report += "- " + "\n- ".join(parts) + "\n\n"
-
-    if fibo_levels:
-        report += (f"--- Fibonacci Retracement {Config.FIBONACCI_TIMEFRAME} "
-                   f"(L: ${fibo_levels['swing_low']}, H: ${fibo_levels['swing_high']}) ---\n")
-        report += "\n".join(f"Level {level}: ${price}" for level, price in fibo_levels['levels'].items()) + "\n\n"
-    return report
-
-async def get_ai_analysis(report: str, symbol: str, current_price: float) -> Optional[Dict[str, Any]]:
-    """Mengirim laporan ke Groq dan mengembalikan hasil analisis dalam format JSON."""
-    if not GROQ_API_KEY: return None
-    print(f"Menghubungi Groq ({Config.GROQ_MODEL}) untuk analisis...")
-    try:
-        client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_KEY)
-        user_prompt = (
-            f"ASET: {symbol}\nKONTEKS HARGA SAAT INI: ${current_price:,.4f}\n\n"
-            f"DATA TEKNIS:\n{report}\n\nLakukan analisis dan hasilkan JSON sesuai aturan."
-        )
-        response = await client.chat.completions.create(
-            model=Config.GROQ_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        analysis = json.loads(response.choices[0].message.content)
-        print("Analisis dari Groq berhasil diterima.")
-        return analysis
-    except Exception as e:
-        print(f"Error saat menghubungi atau mem-parsing respons Groq: {e}")
+        print(f"Warning: Failed to calculate TA indicators. Error: {e}")
         return None
 
-# --- Bagian Notifikasi ---
-def format_telegram_message(analysis: Dict[str, Any], symbol: str, current_price: float) -> str:
-    """Memformat hasil analisis menjadi pesan yang siap dikirim ke Telegram."""
-    analisis_data = analysis.get('analysis', {})
+def calculate_fibonacci_retracement(df: pd.DataFrame, swing_candles: int) -> Optional[Dict[str, Any]]:
+    """Calculates Fibonacci Retracement on the most recent swing."""
+    if df is None or len(df) < swing_candles:
+        return None
+
+    recent_df = df.tail(swing_candles)
+    swing_high = recent_df['high'].max()
+    swing_low = recent_df['low'].min()
+
+    if swing_high == swing_low:
+        return None
+
+    levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+    fibo_levels = {f"{level*100:.1f}%": f"{(swing_high - (swing_high - swing_low) * level):.4f}" for level in levels}
+
+    return {
+        "swing_high": f"{swing_high:.4f}",
+        "swing_low": f"{swing_low:.4f}",
+        "levels": fibo_levels
+    }
+
+def format_data_for_ai(all_data: OhlcvData, all_ta_indicators: Dict[str, Optional[IndicatorData]], fibo_levels: Optional[Dict[str, Any]]) -> str:
+    """Formats the technical data into a structured text report for the AI."""
+    report = "Technical market data for analysis:\n\n--- Summary of Technical Indicators (Last Values) ---\n"
+    for tf, indicators in all_ta_indicators.items():
+        if not indicators: continue
+        report += f"**Timeframe: {tf}**\n"
+        if 'RSI' in indicators: report += f"- RSI: {indicators['RSI']}\n"
+        if 'EMAs' in indicators: report += f"- EMAs: {', '.join([f'{k}: {v}' for k, v in indicators['EMAs'].items()])}\n"
+        if 'ADX' in indicators: report += f"- ADX: {indicators['ADX']['ADX']} ({indicators['ADX']['Status']})\n"
+        if 'Volume' in indicators: report += f"- Volume: {indicators['Volume']['Status']}\n\n"
+
+    if fibo_levels:
+        report += f"--- Fibonacci Retracement from {CONFIG['fibonacci_timeframe']} Swing (Low: ${fibo_levels['swing_low']}, High: ${fibo_levels['swing_high']}) ---\n"
+        report += "\n".join([f"Level {level}: ${price}" for level, price in fibo_levels['levels'].items()]) + "\n\n"
+
+    report += "--- Raw Price Data (Last 10 Candles for Context) ---\n"
+    for tf, df in all_data.items():
+        if df is not None and not df.empty:
+            df_subset = df.copy().tail(10)
+            df_subset['timestamp'] = df_subset['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
+            report += f"Data Timeframe: {tf}\n"
+            report += df_subset[['timestamp', 'open', 'high', 'low', 'close', 'volume']].to_string(index=False) + "\n\n"
+
+    return report
+
+def get_groq_analysis(technical_data_report: str, symbol: str) -> Optional[Dict[str, Any]]:
+    """Sends the technical report to Groq and requests a top-down analysis."""
+    print("Contacting Groq API for in-depth technical analysis...")
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+
+        prompt = (
+            "ROLE: You are an elite Certified Financial Technician (CFTe). Your analysis is sharp, methodical, "
+            "and always considers trend strength and volume confirmation.\n\n"
+            f"ASSET: {symbol}\n\n"
+            "CONTEXT: Analyze the following technical data to formulate the highest probability trading scenario.\n\n"
+            f"PROVIDED TECHNICAL DATA:\n{technical_data_report}\n\n"
+            "TASK: Perform a comprehensive top-down analysis. It is crucial to integrate ADX and Volume data into your analysis for each timeframe.\n"
+            "1. **4-Hour Analysis (Macro Trend & Strength):** Determine the main trend based on EMAs. Use ADX to gauge if this trend is strong (ADX > 25) or weakening/ranging. Use volume for confirmation.\n"
+            "2. **1-Hour Analysis (Structure & Key Areas):** Identify the market structure (impulsive/corrective). Map key demand/supply areas using Fibonacci levels. Is the current pullback supported by declining volume (indicating a healthy correction)?\n"
+            "3. **15-Minute Analysis (Entry Signal & Confirmation):** Describe the confirmation signal you would wait for on the 15M as the price enters the 1H key area. Look for RSI divergence, a spike in volume on reversal, or a valid candle pattern.\n"
+            "4. **Synthesis & Confluence:** State at least 3 technical factors that converge (confluence). You must include ADX or Volume as one of the factors.\n"
+            "5. **Analysis Summary:** Provide a concise one-sentence summary of the analysis.\n"
+            "6. **Trade Plan:** Create a precise and logical trade plan (BUY LIMIT or SELL LIMIT) with Entry, Stop Loss (SL), and two Take Profit (TP1, TP2) levels based on your analysis.\n\n"
+            "OUTPUT FORMAT: Provide the output ONLY in a valid JSON object. YOU MUST FILL ALL KEYS. Use the following structure:\n"
+        )
+
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a financial analyst that provides responses in JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            model=GROQ_MODEL,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+        )
+
+        response_content = chat_completion.choices[0].message.content
+        if response_content:
+            analysis = json.loads(response_content)
+            print("Analysis from Groq successfully received and processed.")
+            return analysis
+        return None
+
+    except Exception as e:
+        print(f"Error contacting or parsing Groq response: {e}")
+        return None
+
+
+def format_analysis_message(analysis: Dict[str, Any], symbol: str, current_price: float) -> str:
+    """Formats the AI's technical analysis for a Telegram notification."""
+    analisis = analysis.get('analysis', {})
     trade_plan = analysis.get('trade_plan', {})
     action = trade_plan.get('Action', 'NEUTRAL').upper()
 
-    emoji_map = {'BUY': ('🟢', '📈'), 'SELL': ('🔴', '📉'), 'NEUTRAL': ('⚪️', '➡️')}
-    main_emoji, bias_emoji = emoji_map.get(action.split()[0], emoji_map['NEUTRAL'])
-    
-    header = f"*{main_emoji} ANALISIS TEKNIKAL CFTe UNTUK {symbol} {bias_emoji}*\n\n*Harga Saat Ini: ${current_price:,.4f}*\n"
-    separator = "----------------------------------------\n\n"
-    
-    analysis_section = (
-        f"*Analisis Multi-Timeframe:*\n\n"
-        f"🕓 *4 Jam (Tren & Kekuatan):* _{analisis_data.get('h4_trend', 'N/A')}_\n"
-        f"🕐 *1 Jam (Struktur & Volume):* _{analisis_data.get('h1_structure', 'N/A')}_\n"
-        f"⏱️ *15 Menit (Konfirmasi Entri):* _{analisis_data.get('m15_confirmation', 'N/A')}_\n\n"
-        f"*🎯 Konfluensi Sinyal Utama:*\n_{analisis_data.get('confluence_factors', 'N/A')}_\n\n"
+    if 'BUY' in action:
+        main_emoji, bias_emoji = '🟢', '📈'
+    elif 'SELL' in action:
+        main_emoji, bias_emoji = '🔴', '📉'
+    else:
+        main_emoji, bias_emoji = '⚪️', '➡️'
+
+    return (
+        f"*{main_emoji} CFTe TECHNICAL ANALYSIS FOR {symbol} {bias_emoji}*\n\n"
+        f"*Current Price: ${current_price:,.4f}*\n"
+        f"----------------------------------------\n\n"
+        f"*Multi-Timeframe Analysis:*\n\n"
+        f"🕓 *4-Hour (Trend & Strength):* _{analisis.get('h4_trend', 'N/A')}_\n\n"
+        f"🕐 *1-Hour (Structure & Volume):* _{analisis.get('h1_structure', 'N/A')}_\n\n"
+        f"⏱️ *15-Minute (Entry Confirmation):* _{analisis.get('m15_confirmation', 'N/A')}_\n\n"
+        f"*🎯 Key Signal Confluence:*\n_{analisis.get('confluence_factors', 'N/A')}_\n\n"
+        f"----------------------------------------\n\n"
+        f"📌 *SYNTHESIS & TRADE PLAN*\n\n"
+        f"*{analisis.get('summary', 'N/A')}*\n\n"
+        f"  - **Action:** *{action}*\n"
+        f"  - **Entry Area:** *{trade_plan.get('Entry', 'N/A')}*\n"
+        f"  - **Take Profit 1:** *{trade_plan.get('TP1', 'N/A')}*\n"
+        f"  - **Take Profit 2:** *{trade_plan.get('TP2', 'N/A')}*\n"
+        f"  - **Stop Loss:** *{trade_plan.get('SL', 'N/A')}*\n\n"
+        f"*Disclaimer: This is an automated analysis and not financial advice.*"
     )
 
-    plan_header = f"📌 *SINTESIS & RENCANA TRADING*\n\n*{analisis_data.get('summary', 'N/A')}*\n\n"
-    plan_details = ""
-    if action != 'NEUTRAL':
-        plan_details = (
-            f"  - *Aksi:* {action}\n"
-            f"  - *Area Entry:* {trade_plan.get('Entry', 'N/A')}\n"
-            f"  - *Take Profit 1:* {trade_plan.get('TP1', 'N/A')}\n"
-            f"  - *Take Profit 2:* {trade_plan.get('TP2', 'N/A')}\n"
-            f"  - *Stop Loss:* {trade_plan.get('SL', 'N/A')}\n\n"
-        )
-    
-    reasoning = f"*🧠 Alasan Rencana:* _{trade_plan.get('reasoning', 'N/A')}_\n\n"
-    footer = "*Disclaimer: Ini adalah analisis otomatis dan bukan nasihat keuangan.*"
-
-    return f"{header}{separator}{analysis_section}{separator}{plan_header}{plan_details}{reasoning}{footer}"
-
-async def send_telegram_notification(message: str):
-    """Mengirim pesan notifikasi ke channel Telegram."""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return
+async def send_telegram_message(message: str) -> None:
+    """Sends a message to Telegram."""
     try:
         bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
-        # Menangani pesan yang terlalu panjang
+        # Handle message length limit by splitting if necessary
         if len(message) > 4096:
-            message = message[:4090] + "\n[...]"
+            message = message[:4090] + "\n..."
         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
-        print("Notifikasi analisis berhasil dikirim ke Telegram.")
+        print("Analysis notification successfully sent to Telegram.")
     except Exception as e:
-        print(f"Error saat mengirim pesan ke Telegram: {e}")
+        print(f"Error sending message to Telegram: {e}")
 
+async def main() -> None:
+    """The main function to run the entire process flow."""
+    check_credentials()
+    cfg = CONFIG
 
-# --- 3. ALUR KERJA UTAMA ---
-def validate_credentials():
-    """Memvalidasi keberadaan semua kredensial yang dibutuhkan."""
-    if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GROQ_API_KEY]):
-        missing = [
-            cred for cred, val in 
-            [("TELEGRAM_BOT_TOKEN", TELEGRAM_BOT_TOKEN), 
-             ("TELEGRAM_CHAT_ID", TELEGRAM_CHAT_ID), 
-             ("GROQ_API_KEY", GROQ_API_KEY)] 
-            if not val
-        ]
-        sys.exit(f"Error: Kredensial berikut belum diatur: {', '.join(missing)}")
-
-async def run_analysis_pipeline():
-    """Menjalankan seluruh alur proses analisis dari awal hingga akhir."""
-    validate_credentials()
-    
-    market_data = await fetch_market_data(
-        Config.SYMBOL, Config.TIMEFRAMES, Config.CANDLE_COUNT_FETCH, Config.EXCHANGE_ID
+    all_market_data = await fetch_all_data(
+        cfg['symbol'], cfg['timeframes'], cfg['candle_count_for_fetch'], cfg['exchange_id']
     )
 
-    valid_data = {tf: df for tf, df in market_data.items() if df is not None and not df.empty}
-    if len(valid_data) != len(Config.TIMEFRAMES):
-        failed_tfs = set(Config.TIMEFRAMES) - set(valid_data.keys())
-        await send_telegram_notification(f"❌ **Bot Error:** Gagal mengambil data pasar untuk: {', '.join(failed_tfs)}.")
-        return
-        
-    current_price = valid_data[Config.TIMEFRAMES[-1]]['close'].iloc[-1]
-    
-    all_indicators = {tf: calculate_technical_indicators(df) for tf, df in valid_data.items()}
-    
-    fibo_df = valid_data.get(Config.FIBONACCI_TIMEFRAME)
-    fibo_levels = calculate_fibonacci_levels(fibo_df, Config.FIBONACCI_SWING_CANDLES) if fibo_df is not None else None
-    
-    technical_report = format_report_for_ai(all_indicators, fibo_levels)
-    
-    ai_analysis = await get_ai_analysis(technical_report, Config.SYMBOL, current_price)
-    
-    if not ai_analysis:
-        await send_telegram_notification(f"❌ **Bot Error:** Gagal mendapatkan analisis dari AI untuk {Config.SYMBOL}.")
+    if not all_market_data or all_market_data.get(cfg['timeframes'][-1]) is None:
+        await send_telegram_message(f"❌ **Bot Error:** Failed to fetch primary market data for {cfg['symbol']}.")
         return
 
-    report_message = format_telegram_message(ai_analysis, Config.SYMBOL, current_price)
-    await send_telegram_notification(report_message)
+    last_price = all_market_data[cfg['timeframes'][-1]]['close'].iloc[-1]
+
+    all_ta = {tf: calculate_ta_indicators(df, cfg['indicators']) for tf, df in all_market_data.items()}
+
+    fibo_df = all_market_data.get(cfg['fibonacci_timeframe'])
+    fibo_levels = calculate_fibonacci_retracement(fibo_df, cfg['fibonacci_swing_candles'])
+
+    technical_report = format_data_for_ai(all_market_data, all_ta, fibo_levels)
+
+    analysis_result = get_groq_analysis(technical_report, cfg['symbol'])
+
+    if not analysis_result:
+        await send_telegram_message(f"❌ **Bot Error:** Failed to get analysis from Groq AI for {cfg['symbol']}.")
+        return
+
+    report_message = format_analysis_message(analysis_result, cfg['symbol'], last_price)
+    await send_telegram_message(report_message)
+    print("Process completed successfully.")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_analysis_pipeline())
-    except KeyboardInterrupt:
-        print("\nProses dihentikan oleh pengguna.")
+    asyncio.run(main())
