@@ -42,8 +42,8 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 # --- PARAMETER STRATEGI ---
 # Pengaturan yang bisa diubah sesuai kebutuhan
 PAIRS_TO_CHECK = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
-TIMEFRAME = '1h'  # Timeframe candle (e.g., '1m', '5m', '15m', '1h', '4h', '1d')
-CANDLE_LIMIT = 100 # Jumlah candle yang akan diambil
+TIMEFRAME = '15m'  # Timeframe candle (e.g., '1m', '5m', '15m', '1h', '4h', '1d')
+CANDLE_LIMIT = 200 # Jumlah candle yang akan diambil
 
 # Input Strategi (sesuai Pine Script)
 BUY_THRESHOLD = 3
