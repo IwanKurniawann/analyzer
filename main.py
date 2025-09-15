@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 Skrip utama untuk menghasilkan laporan analisis pasar yang komprehensif.
@@ -41,7 +42,7 @@ CONFIG = {
     'fibonacci_timeframe': '15m',
     'fibonacci_swing_candles': 60,
     # Model AI diganti ke OpenAI. GPT-5 belum rilis, gpt-4o adalah model terkuat saat ini.
-    'openai_model': 'gpt-5-nano' 
+    'openai_model': 'gpt-4o' 
 }
 
 # --- KREDENSIAL ---
