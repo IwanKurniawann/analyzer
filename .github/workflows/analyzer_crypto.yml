@@ -1,8 +1,25 @@
-name: Crypto Trading Signal Analyzeron:push:branches: [ main ]schedule:# Menjalankan setiap jam untuk menghemat kuota API- cron: '0 * * * *'workflow_dispatch: # Memungkinkan eksekusi manualjobs:run-analyzer:runs-on: ubuntu-lateststeps:- name: Checkout repositoryuses: actions/checkout@v4  - name: Set up Python
+name: Crypto Trading Signal Analyzer
+
+on:
+push:
+branches: [ main ]
+schedule:
+# Menjalankan setiap jam untuk menghemat kuota API
+- cron: '0 * * * *'
+workflow_dispatch: # Memungkinkan eksekusi manual
+
+jobs:
+run-analyzer:
+runs-on: ubuntu-latest
+steps:
+- name: Checkout repository
+uses: actions/checkout@v4
+
+  - name: Set up Python
     id: setup-python
     uses: actions/setup-python@v5
     with:
-      python-version: '3.11' # Versi Python yang stabil dan kompatibel
+      python-version: '3.12' # Versi Python yang stabil dan kompatibel
 
   - name: Cache pip dependencies
     uses: actions/cache@v4
