@@ -1,5 +1,11 @@
+#Core libraries for data handling and exchange communication
 ccxt
-pandas~=2.2.0
-pandas-ta==0.3.14b0
+pandas
+pandas-ta
+
+#For asynchronous operations and notifications
 python-telegram-bot
-openai
+asyncio
+
+#Groq API for AI-powered analysis
+groq
