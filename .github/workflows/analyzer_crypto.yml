@@ -1,44 +1,52 @@
-name: Crypto Trading Signal Analyzer
+# Nama alur kerja (workflow) yang akan ditampilkan di tab Actions GitHub.
+name: Pemindai Sinyal Trading Otomatis
 
+# Menentukan pemicu (trigger) kapan alur kerja ini akan dijalankan.
 on:
-push:
-branches: [ main ]
-schedule:
-# Menjalankan setiap jam untuk menghemat kuota API
-- cron: '0 * * * *'
-workflow_dispatch: # Memungkinkan eksekusi manual
+  # 1. Pemicu berdasarkan jadwal (cron job).
+  # '0 * * * *' berarti alur kerja akan berjalan setiap jam, pada menit ke-0.
+  schedule:
+    - cron: '0 * * * *'
 
+  # 2. Pemicu manual.
+  # Memungkinkan Anda untuk menjalankan alur kerja ini secara manual dari UI GitHub.
+  workflow_dispatch:
+
+# Mendefinisikan satu atau lebih pekerjaan (jobs) yang akan dieksekusi.
 jobs:
-run-analyzer:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout repository
-uses: actions/checkout@v4
+  # Nama pekerjaan (job), bisa diganti sesuai keinginan.
+  scan_and_notify:
+    # Menentukan jenis runner (sistem operasi) yang akan digunakan.
+    # 'ubuntu-latest' akan menggunakan versi stabil Ubuntu terbaru yang disediakan GitHub.
+    runs-on: ubuntu-latest
 
-  - name: Set up Python
-    id: setup-python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.12' # Versi Python yang stabil dan kompatibel
+    # Mendefinisikan urutan langkah-langkah (steps) yang akan dieksekusi dalam pekerjaan ini.
+    steps:
+      # Langkah 1: Checkout kode repositori.
+      # Mengunduh kode dari repositori Anda ke dalam runner.
+      - name: Check out repository code
+        uses: actions/checkout@v4
 
-  - name: Cache pip dependencies
-    uses: actions/cache@v4
-    with:
-      # Lokasi direktori cache untuk pip
-      path: ~/.cache/pip
-      # Kunci unik untuk cache. Cache baru akan dibuat jika requirements.txt berubah.
-      key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-${{ hashFiles('**/requirements.txt') }}
-      restore-keys: |
-        ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-
+      # Langkah 2: Mengatur lingkungan Python.
+      # Menginstal versi Python yang ditentukan.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-  - name: Install dependencies
-    run: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
+      # Langkah 3: Instalasi dependensi.
+      # Meng-upgrade pip dan menginstal semua library yang ada di requirements.txt.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-  - name: Run Python Analyzer Script
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    run: python main.py
+      # Langkah 4: Menjalankan skrip pemindai utama.
+      # Mengeksekusi skrip Python Anda dengan variabel lingkungan yang aman (secrets).
+      - name: Run trading signal scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Anda bisa menambahkan secrets lain di sini jika dibutuhkan.
+          # Contoh: GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python main.py
