@@ -1,7 +1,7 @@
 #Core libraries for data handling and exchange communication
 ccxt~=4.3.0
 pandas~=2.2.0
-pandas-ta~=0.3.14b0
+pandas-ta
 
 #For asynchronous operations and notifications
 python-telegram-bot~=21.0.1
