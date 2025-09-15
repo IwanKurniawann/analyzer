@@ -1,5 +1,5 @@
 ccxt
-pandas
-pandas-ta
+pandas~=2.2.0
+pandas-ta~=0.3.14
 python-telegram-bot
 openai
