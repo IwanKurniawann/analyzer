@@ -4,7 +4,7 @@ name: Pemindai Sinyal Trading Otomatis
 # Menentukan pemicu (trigger) kapan alur kerja ini akan dijalankan.
 on:
   # 1. Pemicu berdasarkan jadwal (cron job).
-  # '0 * * * *' berarti alur kerja akan berjalan setiap jam, pada menit ke-0.
+  # '*/15 * * * *' berarti alur kerja akan berjalan setiap jam, pada menit ke-0.
   schedule:
     - cron: '0 * * * *'
 
