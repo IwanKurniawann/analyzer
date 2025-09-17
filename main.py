@@ -46,12 +46,12 @@ TIMEFRAME = '15m'  # Timeframe candle (e.g., '1m', '5m', '15m', '1h', '4h', '1d'
 CANDLE_LIMIT = 200 # Jumlah candle yang akan diambil
 
 # Input Strategi (sesuai Pine Script)
-BUY_THRESHOLD = 5
+BUY_THRESHOLD = 4
 BODY_MULTIPLIER = 1.1
-TREND_SMA_LENGTH = 50
+TREND_SMA_LENGTH = 200
 RSI_LENGTH = 14
 ATR_LENGTH = 14
-TP_PERC = 3.0
+TP_PERC = 4.8
 SL_PERC = 1.5
 
 
