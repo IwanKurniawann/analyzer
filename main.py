@@ -3,7 +3,7 @@
 main.py
 
 Skrip ini mengimplementasikan strategi trading "Strong Engulfing/Reversal Strategy v8"
-untuk sinyal BELI (LONG) dan JUAL (SHORT) berdasarkan logika Pine Script.
+untuk sinyal BELI (LONG) dan JUAL (SHORT) yang diperkuat dengan deteksi Golden/Death Cross.
 - Mengambil data OHLCV dari KuCoin menggunakan CCXT.
 - Menghitung indikator teknis (SMA, RSI, ATR) menggunakan Pandas TA.
 - Menerapkan sistem skor untuk mengidentifikasi sinyal beli dan jual.
@@ -38,13 +38,14 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 # Pengaturan yang bisa diubah sesuai kebutuhan
 PAIRS_TO_CHECK = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'LINK/USDT', 'ONDO/USDT']
 TIMEFRAME = '15m'  # Timeframe candle (e.g., '1m', '5m', '15m', '1h', '4h', '1d')
-CANDLE_LIMIT = 200 # Jumlah candle yang akan diambil
+CANDLE_LIMIT = 201 # Butuh 201 candle untuk menghitung SMA 200 dengan benar
 
 # Input Strategi (sesuai Pine Script)
 BUY_THRESHOLD = 4   # Ambang batas skor untuk sinyal Beli
 SELL_THRESHOLD = 4  # Ambang batas skor untuk sinyal Jual
 BODY_MULTIPLIER = 1.1
-TREND_SMA_LENGTH = 50
+LONG_SMA_LENGTH = 200   # Untuk tren jangka panjang & Death/Golden Cross
+SHORT_SMA_LENGTH = 50   # Untuk tren jangka menengah & Death/Golden Cross
 RSI_LENGTH = 14
 ATR_LENGTH = 14
 TP_PERC = 4.8
@@ -84,7 +85,8 @@ def calculate_indicators(df: pd.DataFrame):
     """Menghitung indikator teknis yang dibutuhkan."""
     if df.empty:
         return df
-    df.ta.sma(length=TREND_SMA_LENGTH, append=True)
+    df.ta.sma(length=SHORT_SMA_LENGTH, append=True)
+    df.ta.sma(length=LONG_SMA_LENGTH, append=True)
     df.ta.rsi(length=RSI_LENGTH, append=True)
     df.ta.atr(length=ATR_LENGTH, append=True)
     return df
@@ -106,7 +108,8 @@ def analyze_market_conditions(df: pd.DataFrame) -> (int, dict, int, dict):
     # --- Analisis Umum ---
     body_size = abs(last_closed_candle['close'] - last_closed_candle['open'])
     prev_body_size = abs(prev_candle['close'] - prev_candle['open'])
-    sma_col = f'SMA_{TREND_SMA_LENGTH}'
+    short_sma_col = f'SMA_{SHORT_SMA_LENGTH}'
+    long_sma_col = f'SMA_{LONG_SMA_LENGTH}'
     rsi_col = f'RSI_{RSI_LENGTH}'
     atr_col = f'ATRr_{ATR_LENGTH}'
 
@@ -125,9 +128,9 @@ def analyze_market_conditions(df: pd.DataFrame) -> (int, dict, int, dict):
         bullish_conditions['Pola'] = "Bullish Engulfing"
 
     # 2. Skor Tren Bullish (Bobot: 1 Poin)
-    if last_closed_candle['close'] > last_closed_candle[sma_col]:
+    if last_closed_candle['close'] > last_closed_candle[long_sma_col]:
         bullish_score += 1
-        bullish_conditions['Tren'] = f"Harga di atas SMA {TREND_SMA_LENGTH}"
+        bullish_conditions['Tren'] = f"Harga di atas SMA {LONG_SMA_LENGTH}"
 
     # 3. Skor Momentum Bullish (Bobot: 1 Poin)
     if last_closed_candle[rsi_col] > 55:
@@ -141,6 +144,15 @@ def analyze_market_conditions(df: pd.DataFrame) -> (int, dict, int, dict):
         bearish_score += 1 # Volatilitas tinggi baik untuk long maupun short
         bearish_conditions['Volatilitas'] = "ATR Meningkat"
 
+    # 5. Skor Golden Cross (Bobot: 2 Poin)
+    sma50_now = last_closed_candle[short_sma_col]
+    sma200_now = last_closed_candle[long_sma_col]
+    sma50_prev = prev_candle[short_sma_col]
+    sma200_prev = prev_candle[long_sma_col]
+
+    if sma50_now > sma200_now and sma50_prev <= sma200_prev:
+        bullish_score += 2
+        bullish_conditions['Cross'] = f"Golden Cross (SMA {SHORT_SMA_LENGTH} > SMA {LONG_SMA_LENGTH})"
 
     # --- LOGIKA UNTUK SINYAL JUAL (BEARISH) ---
 
@@ -157,14 +169,19 @@ def analyze_market_conditions(df: pd.DataFrame) -> (int, dict, int, dict):
         bearish_conditions['Pola'] = "Bearish Engulfing"
 
     # 2. Skor Tren Bearish (Bobot: 1 Poin)
-    if last_closed_candle['close'] < last_closed_candle[sma_col]:
+    if last_closed_candle['close'] < last_closed_candle[long_sma_col]:
         bearish_score += 1
-        bearish_conditions['Tren'] = f"Harga di bawah SMA {TREND_SMA_LENGTH}"
+        bearish_conditions['Tren'] = f"Harga di bawah SMA {LONG_SMA_LENGTH}"
 
     # 3. Skor Momentum Bearish (Bobot: 1 Poin)
     if last_closed_candle[rsi_col] < 45:
         bearish_score += 1
         bearish_conditions['Momentum'] = f"RSI({RSI_LENGTH}) < 45 ({last_closed_candle[rsi_col]:.2f})"
+
+    # 4. Skor Death Cross (Bobot: 2 Poin)
+    if sma50_now < sma200_now and sma50_prev >= sma200_prev:
+        bearish_score += 2
+        bearish_conditions['Cross'] = f"Death Cross (SMA {SHORT_SMA_LENGTH} < SMA {LONG_SMA_LENGTH})"
 
     return bullish_score, bullish_conditions, bearish_score, bearish_conditions
 
@@ -189,8 +206,8 @@ async def main():
 
     for pair in PAIRS_TO_CHECK:
         df = await get_kucoin_data(pair, TIMEFRAME, CANDLE_LIMIT)
-        if df.empty:
-            logging.warning(f"Tidak ada data untuk {pair}, melanjutkan ke pair berikutnya.")
+        if df.empty or df.isnull().values.any():
+            logging.warning(f"Tidak ada data atau data tidak valid untuk {pair}, melanjutkan.")
             continue
 
         df = calculate_indicators(df)
@@ -260,4 +277,5 @@ if __name__ == "__main__":
         logging.error("Harap atur TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di environment variables.")
     else:
         asyncio.run(main())
+
 
