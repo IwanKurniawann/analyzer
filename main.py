@@ -41,8 +41,8 @@ TIMEFRAME = '15m'  # Timeframe candle (e.g., '1m', '5m', '15m', '1h', '4h', '1d'
 CANDLE_LIMIT = 201 # Butuh 201 candle untuk menghitung SMA 200 dengan benar
 
 # Input Strategi (sesuai Pine Script)
-BUY_THRESHOLD = 4   # Ambang batas skor untuk sinyal Beli
-SELL_THRESHOLD = 4  # Ambang batas skor untuk sinyal Jual
+BUY_THRESHOLD = 5  # Ambang batas skor untuk sinyal Beli
+SELL_THRESHOLD = 5  # Ambang batas skor untuk sinyal Jual
 BODY_MULTIPLIER = 1.1
 LONG_SMA_LENGTH = 200   # Untuk tren jangka panjang & Death/Golden Cross
 SHORT_SMA_LENGTH = 50   # Untuk tren jangka menengah & Death/Golden Cross
