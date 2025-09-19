@@ -48,7 +48,7 @@ LONG_SMA_LENGTH = 200   # Untuk tren jangka panjang & Death/Golden Cross
 SHORT_SMA_LENGTH = 50   # Untuk tren jangka menengah & Death/Golden Cross
 RSI_LENGTH = 14
 ATR_LENGTH = 14
-TP_PERC = 4.8
+TP_PERC = 3.0
 SL_PERC = 1.5
 
 
