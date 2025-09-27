@@ -35,6 +35,9 @@ jobs:
         sudo apt-get install -y build-essential
         echo "Installing Python dependencies..."
         python -m pip install --upgrade pip
+        # Install pandas-ta first to let it pull its specific compatible dependencies
+        pip install pandas-ta
+        # Install the rest of the requirements, which will use the already-installed packages
         pip install -r requirements.txt
        
     - name: 🔍 Verify Libraries
