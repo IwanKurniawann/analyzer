@@ -2,8 +2,8 @@
   "trading_config": {
     "coins_to_analyze": [
       "SOL/USDT", "ETH/USDT", "BTC/USDT", "ADA/USDT", "DOT/USDT",
-      "MATIC/USDT", "AVAX/USDT", "ATOM/USDT", "LINK/USDT", "UNI/USDT",
-      "AAVE/USDT", "SAND/USDT", "MANA/USDT", "FTM/USDT", "ALGO/USDT",
+      "PENGU/USDT", "AVAX/USDT", "ATOM/USDT", "LINK/USDT", "UNI/USDT",
+      "AAVE/USDT", "SAND/USDT", "MANA/USDT", "APT/USDT", "ALGO/USDT",
       "XRP/USDT", "BNB/USDT", "LTC/USDT", "TRX/USDT", "VET/USDT",
       "NEAR/USDT", "ICP/USDT", "FIL/USDT", "ETC/USDT", "XLM/USDT"
     ],
@@ -33,7 +33,7 @@
       "rsi_overbought": 70,
       "use_fibonacci_levels": true,
       "technical_confirmation_required": true,
-      "min_confidence_for_signal": 0.75,
+      "min_confidence_for_signal": 0.70,
       "volume_filter_enabled": true,
       "hybrid_approach_enabled": true
     },
@@ -85,7 +85,7 @@
       "hybrid_confirmation_required": true,
       "sma_structure_confirmation": true,
       "ema_timing_confirmation": true,
-      "multi_timeframe_alignment": false,
+      "multi_timeframe_alignment": true,
       
       "buy_signal_criteria": {
         "sma_trend_bullish": true,
@@ -167,7 +167,7 @@
       "volume_consistency_check": true
     },
     "quality_control": {
-      "min_confidence_for_notification": 0.75,
+      "min_confidence_for_notification": 0.70,
       "min_hybrid_score_for_notification": 0.65,
       "require_volume_confirmation": true,
       "require_technical_confluence": true,
@@ -195,11 +195,11 @@
       "export_results": true
     },
     "advanced_features": {
-      "adaptive_thresholds": false,
-      "machine_learning_scoring": false,
-      "cross_coin_correlation": false,
+      "adaptive_thresholds": true,
+      "machine_learning_scoring": true,
+      "cross_coin_correlation": true,
       "sector_analysis": false,
-      "sentiment_integration": false,
+      "sentiment_integration": true,
       "multi_exchange_comparison": false,
       "portfolio_optimization": false
     },

@@ -272,8 +272,8 @@ class MultiCoinHybridAnalyzer:
             "trading_config": {
                 "coins_to_analyze": [
                     "SOL/USDT", "ETH/USDT", "BTC/USDT", "ADA/USDT", "DOT/USDT",
-                    "MATIC/USDT", "AVAX/USDT", "ATOM/USDT", "LINK/USDT", "UNI/USDT",
-                    "AAVE/USDT", "SAND/USDT", "MANA/USDT", "FTM/USDT", "ALGO/USDT",
+                    "PENGU/USDT", "AVAX/USDT", "ATOM/USDT", "LINK/USDT", "UNI/USDT",
+                    "AAVE/USDT", "SAND/USDT", "MANA/USDT", "APT/USDT", "ALGO/USDT",
                     "XRP/USDT", "BNB/USDT", "LTC/USDT", "TRX/USDT", "VET/USDT",
                     "NEAR/USDT", "ICP/USDT", "FIL/USDT", "ETC/USDT", "XLM/USDT"
                 ],
