@@ -30,8 +30,12 @@ jobs:
         
     - name: 📦 Install Dependencies
       run: |
-        echo "Installing dependencies..."
-        python -m pip install --upgrade pip
+        echo "Updating system packages and installing build tools..."
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+        echo "Installing Python build dependencies..."
+        python -m pip install --upgrade pip setuptools wheel
+        echo "Installing application dependencies..."
         pip install -r requirements.txt
         
     - name: 🔍 Verify Libraries
