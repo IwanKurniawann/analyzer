@@ -8,7 +8,7 @@ on:
     branches: [main, master]
 
 env:
-  PYTHON_VERSION: '3.10'
+  PYTHON_VERSION: '3.12'
   ANALYZER_VERSION: 'v2.1'
   MAX_ANALYSIS_TIME: 35
 
