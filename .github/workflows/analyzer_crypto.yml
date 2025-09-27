@@ -187,75 +187,75 @@ jobs:
             logs/
           retention-days: 30
         
-    - name: 📱 Send Notification
-      if: always()
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        echo "📱 Sending notification..."
-        
-        STATUS="${{ job.status }}"
-        RESULTS=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
-        
-        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-          if [ "$STATUS" = "success" ]; then
-            EMOJI="✅"
-            MSG="Multi-Coin Hybrid Analysis Completed Successfully"
-            DETAILS="📊 Result files: $RESULTS\\n🔧 Hybrid SMA+EMA system operational\\n⚖️ SMA (70%) + EMA (30%) approach\\n🎯 Quality filtering: 75% + 65% thresholds"
-          else
-            EMOJI="❌"
-            MSG="Multi-Coin Hybrid Analysis Failed"  
-            DETAILS="🔍 Check workflow logs\\n🚨 System needs attention\\n📋 Artifacts available for debugging"
-          fi
-          
-          MESSAGE="$EMOJI **Multi-Coin Hybrid Analyzer v${{ env.ANALYZER_VERSION }}**
+        - name: 📱 Send Notification
+          if: always()
+          env:
+            TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          run: |
+            echo "📱 Sending notification..."
+            
+            STATUS="${{ job.status }}"
+            RESULTS=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+            
+            if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+              if [ "$STATUS" = "success" ]; then
+                EMOJI="✅"
+                MSG="Multi-Coin Hybrid Analysis Completed Successfully"
+                DETAILS="📊 Result files: $RESULTS\\n🔧 Hybrid SMA+EMA system operational\\n⚖️ SMA (70%) + EMA (30%) approach\\n🎯 Quality filtering: 75% + 65% thresholds"
+              else
+                EMOJI="❌"
+                MSG="Multi-Coin Hybrid Analysis Failed"  
+                DETAILS="🔍 Check workflow logs\\n🚨 System needs attention\\n📋 Artifacts available for debugging"
+              fi
+              
+              MESSAGE="$EMOJI **Multi-Coin Hybrid Analyzer v${{ env.ANALYZER_VERSION }}**
 
-        🎯 **Status:** $MSG
+            🎯 **Status:** $MSG
 
-        $DETAILS
+            $DETAILS
 
-        🕐 **Time:** $(date)
-        🔗 **Run:** #${{ github.run_number }}
-        💱 **Exchange:** KuCoin
-        📊 **Strategy:** Smart Money Concepts"
+            🕐 **Time:** $(date)
+            🔗 **Run:** #${{ github.run_number }}
+            💱 **Exchange:** KuCoin
+            📊 **Strategy:** Smart Money Concepts"
 
-                  curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-                    -d "chat_id=$TELEGRAM_CHAT_ID" \
-                    -d "text=$MESSAGE" \
-                    -d "parse_mode=Markdown"
-                  
-                  echo "✅ Notification sent"
-                else
-                  echo "⚠️ Telegram credentials not configured"
-                fi
-                
-            - name: 🧹 Cleanup
-              if: always()
-              run: |
-        echo "🧹 Cleanup..."
-        
-        # Archive logs
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        [ -f trading_log.txt ] && cp trading_log.txt "logs/trading_log_$TIMESTAMP.txt"
-        
-        # Keep latest 3 results only
-        RESULT_COUNT=$(ls -t multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
-        if [ $RESULT_COUNT -gt 3 ]; then
-          echo "Removing old results (keeping 3)"
-          ls -t multicoin_hybrid_analysis_*.json | tail -n +4 | xargs rm -f
-        fi
-        
-        # Clean temp files
-        rm -f *.tmp *.cache ./*.pyc 2>/dev/null || true
-        rm -rf __pycache__ 2>/dev/null || true
-        rm -f process_results.py
-        
-        echo "📊 Final status:"
-        echo "• Results: $(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l) files"
-        echo "• Logs: $(ls logs/ 2>/dev/null | wc -l) archived" 
-        echo "• Storage: $(du -sh . 2>/dev/null | cut -f1)"
-        echo "✅ Cleanup completed"
+                      curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                        -d "chat_id=$TELEGRAM_CHAT_ID" \
+                        -d "text=$MESSAGE" \
+                        -d "parse_mode=Markdown"
+                      
+                      echo "✅ Notification sent"
+                    else
+                      echo "⚠️ Telegram credentials not configured"
+                    fi
+                    
+                - name: 🧹 Cleanup
+                  if: always()
+                  run: |
+            echo "🧹 Cleanup..."
+            
+            # Archive logs
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            [ -f trading_log.txt ] && cp trading_log.txt "logs/trading_log_$TIMESTAMP.txt"
+            
+            # Keep latest 3 results only
+            RESULT_COUNT=$(ls -t multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+            if [ $RESULT_COUNT -gt 3 ]; then
+              echo "Removing old results (keeping 3)"
+              ls -t multicoin_hybrid_analysis_*.json | tail -n +4 | xargs rm -f
+            fi
+            
+            # Clean temp files
+            rm -f *.tmp *.cache ./*.pyc 2>/dev/null || true
+            rm -rf __pycache__ 2>/dev/null || true
+            rm -f process_results.py
+            
+            echo "📊 Final status:"
+            echo "• Results: $(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l) files"
+            echo "• Logs: $(ls logs/ 2>/dev/null | wc -l) archived" 
+            echo "• Storage: $(du -sh . 2>/dev/null | cut -f1)"
+            echo "✅ Cleanup completed"
 
   system-health-monitor:
     name: System Health Assessment
