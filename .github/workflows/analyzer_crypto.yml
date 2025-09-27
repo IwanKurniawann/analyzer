@@ -58,7 +58,7 @@ jobs:
           exit 1
         fi
         
-        if [ ! -f multi_coin_hybrid_analyzer.py ]; then
+        if [ ! -f main.py ]; then
           echo "❌ main script not found" 
           exit 1
         fi
