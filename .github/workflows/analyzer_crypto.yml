@@ -8,7 +8,7 @@ on:
     branches: [main, master]
 
 env:
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3.10'
   ANALYZER_VERSION: 'v2.1'
   MAX_ANALYSIS_TIME: 35
 
@@ -30,14 +30,13 @@ jobs:
         
     - name: 📦 Install Dependencies
       run: |
-        echo "Updating system packages and installing build tools..."
+        echo "Installing system build tools..."
         sudo apt-get update
         sudo apt-get install -y build-essential
-        echo "Installing Python build dependencies..."
-        python -m pip install --upgrade pip setuptools wheel
-        echo "Installing application dependencies..."
+        echo "Installing Python dependencies..."
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
+       
     - name: 🔍 Verify Libraries
       run: |
         echo "Verifying libraries..."
@@ -45,7 +44,7 @@ jobs:
         echo "System: $(uname -a)"
         echo "Python: $(python --version)"
         echo "Memory: $(free -h | head -2)"
-        
+       
     - name: ⚙️ Validate Configuration
       run: |
         echo "Validating configuration..."
