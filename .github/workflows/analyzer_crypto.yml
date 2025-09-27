@@ -98,7 +98,7 @@ jobs:
         echo ""
         
         START_TIME=$(date +%s)
-        timeout ${{ env.MAX_ANALYSIS_TIME }}m python multi_coin_hybrid_analyzer.py
+        timeout ${{ env.MAX_ANALYSIS_TIME }}m python main.py
         EXIT_CODE=$?
         
         END_TIME=$(date +%s)
