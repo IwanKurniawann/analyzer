@@ -175,17 +175,17 @@ jobs:
             fi            
 
         - name: 📦 Archive Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: analysis-results-${{ github.run_number }}
-          path: |
-            multicoin_hybrid_analysis_*.json
-            *.log
-            *.txt
-            analysis_results/
-            logs/
-          retention-days: 30
+          if: always()
+          uses: actions/upload-artifact@v4
+          with:
+            name: analysis-results-${{ github.run_number }}
+            path: |
+              multicoin_hybrid_analysis_*.json
+              *.log
+              *.txt
+              analysis_results/
+              logs/
+            retention-days: 30
         
         - name: 📱 Send Notification
           if: always()
