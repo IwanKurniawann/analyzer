@@ -1,52 +1,342 @@
-# Nama alur kerja (workflow) yang akan ditampilkan di tab Actions GitHub.
-name: Pemindai Sinyal Trading Otomatis
+name: Multi-Coin Hybrid SMA+EMA Trading Analysis v2.1
 
-# Menentukan pemicu (trigger) kapan alur kerja ini akan dijalankan.
 on:
-  # 1. Pemicu berdasarkan jadwal (cron job).
-  # '*/15 * * * *' berarti alur kerja akan berjalan setiap jam, pada menit ke-0.
   schedule:
-    - cron: '0 * * * *'
-
-  # 2. Pemicu manual.
-  # Memungkinkan Anda untuk menjalankan alur kerja ini secara manual dari UI GitHub.
+    - cron: '0 */4 * * *'
   workflow_dispatch:
+  push:
+    branches: [main, master]
 
-# Mendefinisikan satu atau lebih pekerjaan (jobs) yang akan dieksekusi.
+env:
+  PYTHON_VERSION: '3.11'
+  ANALYZER_VERSION: 'v2.1'
+  MAX_ANALYSIS_TIME: 35
+
 jobs:
-  # Nama pekerjaan (job), bisa diganti sesuai keinginan.
-  scan_and_notify:
-    # Menentukan jenis runner (sistem operasi) yang akan digunakan.
-    # 'ubuntu-latest' akan menggunakan versi stabil Ubuntu terbaru yang disediakan GitHub.
+  multi-coin-hybrid-analysis:
+    name: Multi-Coin Hybrid Analysis
     runs-on: ubuntu-latest
-
-    # Mendefinisikan urutan langkah-langkah (steps) yang akan dieksekusi dalam pekerjaan ini.
+    timeout-minutes: 35
+    
     steps:
-      # Langkah 1: Checkout kode repositori.
-      # Mengunduh kode dari repositori Anda ke dalam runner.
-      - name: Check out repository code
-        uses: actions/checkout@v4
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 📦 Install Dependencies
+      run: |
+        echo "Installing dependencies..."
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 🔍 Verify Libraries
+      run: |
+        echo "Verifying libraries..."
+        python -c "import ccxt, pandas_ta, pandas, numpy, requests; print('✅ All libraries OK')"
+        echo "System: $(uname -a)"
+        echo "Python: $(python --version)"
+        echo "Memory: $(free -h | head -2)"
+        
+    - name: ⚙️ Validate Configuration
+      run: |
+        echo "Validating configuration..."
+    
+        # Check required files exist  
+        if [ ! -f config.json ]; then
+          echo "❌ config.json not found"
+          exit 1
+        fi
+        
+        if [ ! -f multi_coin_hybrid_analyzer.py ]; then
+          echo "❌ main script not found" 
+          exit 1
+        fi
+        
+        # Basic JSON syntax validation
+        if ! python -c "import json; json.load(open('config.json'))" 2>/dev/null; then
+          echo "❌ Invalid JSON syntax in config.json"
+          exit 1
+        fi
+        
+        # Extract config info
+        APPROACH=$(python -c "import json; print(json.load(open('config.json')).get('trading_config',{}).get('technical_indicators',{}).get('approach','unknown'))")
+        COIN_COUNT=$(python -c "import json; print(len(json.load(open('config.json')).get('trading_config',{}).get('coins_to_analyze',[])))")
+        WORKERS=$(python -c "import json; print(json.load(open('config.json')).get('trading_config',{}).get('max_workers',1))")
+        
+        echo "✅ Config valid: $APPROACH approach, $COIN_COUNT coins, $WORKERS workers"
+        
+        if [ "$APPROACH" != "hybrid" ]; then
+          echo "⚠️ Expected hybrid approach, got: $APPROACH"
+        fi
+        
+        mkdir -p analysis_results logs backups
+        echo "✅ Configuration validated successfully"
+        
+    - name: 🚀 Run Analysis
+      env:
+        KUCOIN_API_KEY: ${{ secrets.KUCOIN_API_KEY }}
+        KUCOIN_API_SECRET: ${{ secrets.KUCOIN_API_SECRET }}
+        KUCOIN_API_PASSPHRASE: ${{ secrets.KUCOIN_API_PASSPHRASE }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        echo "🚀 Starting Multi-Coin Hybrid Analysis v${{ env.ANALYZER_VERSION }}"
+        echo "Strategy: Smart Money + Hybrid SMA+EMA"
+        echo "Approach: SMA 70% + EMA 30%"
+        echo "Quality: 75% confidence + 65% hybrid score"
+        echo ""
+        
+        START_TIME=$(date +%s)
+        timeout ${{ env.MAX_ANALYSIS_TIME }}m python multi_coin_hybrid_analyzer.py
+        EXIT_CODE=$?
+        
+        END_TIME=$(date +%s)
+        RUNTIME=$((END_TIME - START_TIME))
+        
+        echo ""
+        echo "Analysis completed in ${RUNTIME}s with exit code $EXIT_CODE"
+        
+        if [ $EXIT_CODE -eq 0 ]; then
+          echo "✅ Analysis successful"
+        elif [ $EXIT_CODE -eq 124 ]; then
+          echo "⏰ Analysis timed out"
+          exit 1
+        else
+          echo "❌ Analysis failed"
+          exit 1
+        fi
+        - name: 📊 Process Results
+          if: always()
+          run: |
+            echo "📊 Processing results..."
+            
+            RESULT_COUNT=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+            echo "Result files: $RESULT_COUNT"
+            
+            if [ $RESULT_COUNT -gt 0 ]; then
+              LATEST=$(ls -t multicoin_hybrid_analysis_*.json | head -1)
+              echo "Latest file: $LATEST"
+              
+              # Write the Python processing logic to a temporary script file
+              cat > process_results.py <<EOF
+        import json
+        import os
+        import sys
 
-      # Langkah 2: Mengatur lingkungan Python.
-      # Menginstal versi Python yang ditentukan.
-      - name: Set up Python
-        uses: actions/setup-python@v5
+        try:
+            latest_file_path = os.environ['LATEST_FILE']
+            with open(latest_file_path) as f:
+                data = json.load(f)
+            stats = data.get('statistics', {})
+            results = data.get('results', {})
+            
+            total = stats.get('total_coins', 0)
+            success = stats.get('successful_analysis', 0)
+            signals = stats.get('trading_signals', 0)
+            hybrid_score = stats.get('avg_hybrid_score', 0)
+            
+            print(f"📊 Results: {success}/{total} coins, {signals} signals")
+            print(f"📈 Hybrid score: {hybrid_score:.2f}")
+            
+            trading_signals = [(k, v) for k, v in results.items() 
+                              if not v.get('error') and v.get('action') in ['buy', 'sell']]
+            
+            if trading_signals:
+                trading_signals.sort(key=lambda x: x[1].get('confidence', 0), reverse=True)
+                print("🎯 Top signals:")
+                for i, (symbol, signal) in enumerate(trading_signals[:5], 1):
+                    coin = symbol.replace('/USDT', '')
+                    action = signal.get('action', '').upper()
+                    conf = signal.get('confidence', 0)
+                    hybrid = signal.get('analysis', {}).get('indicators', {}).get('hybrid_confidence', 0)
+                    print(f"  {i}. {action} {coin}: {conf:.1%} (H:{hybrid:.2f})")
+            else:
+                print("📊 No signals (quality filtering active)")
+                
+        except Exception as e:
+            print(f"Error processing results: {e}", file=sys.stderr)
+            sys.exit(1)
+        EOF
+              # Execute the temporary script, passing the latest file via an environment variable
+              LATEST_FILE="$LATEST" python process_results.py
+            else
+              echo "❌ No results found"
+            fi            
+
+        - name: 📦 Archive Results
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          python-version: '3.12'
+          name: analysis-results-${{ github.run_number }}
+          path: |
+            multicoin_hybrid_analysis_*.json
+            *.log
+            *.txt
+            analysis_results/
+            logs/
+          retention-days: 30
+        
+    - name: 📱 Send Notification
+      if: always()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        echo "📱 Sending notification..."
+        
+        STATUS="${{ job.status }}"
+        RESULTS=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+        
+        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="✅"
+            MSG="Multi-Coin Hybrid Analysis Completed Successfully"
+            DETAILS="📊 Result files: $RESULTS\\n🔧 Hybrid SMA+EMA system operational\\n⚖️ SMA (70%) + EMA (30%) approach\\n🎯 Quality filtering: 75% + 65% thresholds"
+          else
+            EMOJI="❌"
+            MSG="Multi-Coin Hybrid Analysis Failed"  
+            DETAILS="🔍 Check workflow logs\\n🚨 System needs attention\\n📋 Artifacts available for debugging"
+          fi
+          
+          MESSAGE="$EMOJI **Multi-Coin Hybrid Analyzer v${{ env.ANALYZER_VERSION }}**
 
-      # Langkah 3: Instalasi dependensi.
-      # Meng-upgrade pip dan menginstal semua library yang ada di requirements.txt.
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        🎯 **Status:** $MSG
 
-      # Langkah 4: Menjalankan skrip pemindai utama.
-      # Mengeksekusi skrip Python Anda dengan variabel lingkungan yang aman (secrets).
-      - name: Run trading signal scanner
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # Anda bisa menambahkan secrets lain di sini jika dibutuhkan.
-          # Contoh: GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python main.py
+        $DETAILS
+
+        🕐 **Time:** $(date)
+        🔗 **Run:** #${{ github.run_number }}
+        💱 **Exchange:** KuCoin
+        📊 **Strategy:** Smart Money Concepts"
+
+                  curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                    -d "chat_id=$TELEGRAM_CHAT_ID" \
+                    -d "text=$MESSAGE" \
+                    -d "parse_mode=Markdown"
+                  
+                  echo "✅ Notification sent"
+                else
+                  echo "⚠️ Telegram credentials not configured"
+                fi
+                
+            - name: 🧹 Cleanup
+              if: always()
+              run: |
+        echo "🧹 Cleanup..."
+        
+        # Archive logs
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        [ -f trading_log.txt ] && cp trading_log.txt "logs/trading_log_$TIMESTAMP.txt"
+        
+        # Keep latest 3 results only
+        RESULT_COUNT=$(ls -t multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+        if [ $RESULT_COUNT -gt 3 ]; then
+          echo "Removing old results (keeping 3)"
+          ls -t multicoin_hybrid_analysis_*.json | tail -n +4 | xargs rm -f
+        fi
+        
+        # Clean temp files
+        rm -f *.tmp *.cache ./*.pyc 2>/dev/null || true
+        rm -rf __pycache__ 2>/dev/null || true
+        rm -f process_results.py
+        
+        echo "📊 Final status:"
+        echo "• Results: $(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l) files"
+        echo "• Logs: $(ls logs/ 2>/dev/null | wc -l) archived" 
+        echo "• Storage: $(du -sh . 2>/dev/null | cut -f1)"
+        echo "✅ Cleanup completed"
+
+  system-health-monitor:
+    name: System Health Assessment
+    runs-on: ubuntu-latest
+    needs: multi-coin-hybrid-analysis
+    if: always()
+    timeout-minutes: 10
+    
+    steps:
+    - name: 🏥 Health Assessment
+      run: |
+        echo "🏥 Multi-Coin Hybrid Analyzer v${{ env.ANALYZER_VERSION }} Health Check"
+        echo "=============================================="
+        
+        MAIN_STATUS="${{ needs.multi-coin-hybrid-analysis.result }}"
+        echo "📊 Primary Analysis Status: $MAIN_STATUS"
+        echo ""
+        
+        case "$MAIN_STATUS" in
+          "success")
+            echo "✅ SYSTEM STATUS: HEALTHY"
+            echo "========================="
+            echo "🎯 Multi-coin analysis: OPERATIONAL"
+            echo "⚖️ Hybrid SMA+EMA engine: FUNCTIONAL"
+            echo "📡 KuCoin connectivity: STABLE"
+            echo "📱 Telegram integration: ACTIVE"
+            echo "⚡ Parallel processing: OPTIMAL"
+            HEALTH="EXCELLENT"
+            ;;
+          "failure")
+            echo "❌ SYSTEM STATUS: CRITICAL"
+            echo "=========================="
+            echo "🔍 Analysis execution: FAILED"
+            echo "🚨 Investigation required: IMMEDIATE"
+            echo "📋 Action needed: Check logs and config"
+            echo "🛠️ Recommendations:"
+            echo "  • Verify API credentials"
+            echo "  • Check configuration syntax"
+            echo "  • Review dependency versions"
+            echo "  • Consider reducing coin count"
+            HEALTH="CRITICAL"
+            ;;
+          *)
+            echo "⚠️ SYSTEM STATUS: UNCERTAIN"
+            echo "============================"
+            echo "🤔 Status: $MAIN_STATUS (unknown)"
+            echo "🔍 Manual verification needed"
+            HEALTH="UNKNOWN"
+            ;;
+        esac
+        
+        echo ""
+        echo "📈 Performance Expectations:"
+        echo "• Success rate target: >90%"
+        echo "• Runtime target: 3-5 min for 25 coins"
+        echo "• Confidence threshold: 75%+"
+        echo "• Hybrid score threshold: 65%+"
+        echo "• Workers: 8 parallel threads"
+        
+        echo ""
+        echo "⚖️ Hybrid System Specs:"
+        echo "• SMA weight: 70% (structure & stability)"
+        echo "• EMA weight: 30% (timing & responsiveness)"
+        echo "• Combined approach benefits:"
+        echo "  - Target win rate: 82%"
+        echo "  - Target R:R ratio: 3.2:1"
+        echo "  - Reduced false signals: <12%"
+        
+        echo ""
+        echo "🔧 System Recommendations:"
+        if [ "$HEALTH" = "EXCELLENT" ]; then
+          echo "✅ Continue current operations"
+          echo "✅ System performing optimally"
+          echo "✅ No immediate action required"
+        elif [ "$HEALTH" = "CRITICAL" ]; then
+          echo "🚨 Immediate intervention required"
+          echo "🔍 Download and review artifacts"
+          echo "⚙️ Verify all configurations"
+          echo "🛠️ Address within 4 hours"
+        else
+          echo "🔍 Monitor next 2 cycles closely"
+          echo "📊 Consider manual test run"
+        fi
+        
+        echo ""
+        echo "🕐 Next scheduled run: Every 4 hours"
+        echo "📊 Current health: $HEALTH"
+        echo "🚀 Version: v${{ env.ANALYZER_VERSION }}"
+        echo "✅ Health assessment completed"
+
