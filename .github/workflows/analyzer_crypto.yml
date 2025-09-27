@@ -116,20 +116,20 @@ jobs:
           echo "❌ Analysis failed"
           exit 1
         fi
-        - name: 📊 Process Results
-          if: always()
-          run: |
-            echo "📊 Processing results..."
+    - name: 📊 Process Results
+      if: always()
+      run: |
+        echo "📊 Processing results..."
             
-            RESULT_COUNT=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
-            echo "Result files: $RESULT_COUNT"
+        RESULT_COUNT=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+          echo "Result files: $RESULT_COUNT"
             
-            if [ $RESULT_COUNT -gt 0 ]; then
-              LATEST=$(ls -t multicoin_hybrid_analysis_*.json | head -1)
-              echo "Latest file: $LATEST"
+        if [ $RESULT_COUNT -gt 0 ]; then
+          LATEST=$(ls -t multicoin_hybrid_analysis_*.json | head -1)
+          echo "Latest file: $LATEST"
               
-              # Write the Python processing logic to a temporary script file
-              cat > process_results.py <<EOF
+          # Write the Python processing logic to a temporary script file
+          cat > process_results.py <<EOF
         import json
         import os
         import sys
@@ -174,42 +174,42 @@ jobs:
               echo "❌ No results found"
             fi            
 
-        - name: 📦 Archive Results
-          if: always()
-          uses: actions/upload-artifact@v4
-          with:
-            name: analysis-results-${{ github.run_number }}
-            path: |
-              multicoin_hybrid_analysis_*.json
-              *.log
-              *.txt
-              analysis_results/
-              logs/
-            retention-days: 30
+    - name: 📦 Archive Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: analysis-results-${{ github.run_number }}
+        path: |
+          multicoin_hybrid_analysis_*.json
+          *.log
+          *.txt
+          analysis_results/
+          logs/
+          etention-days: 30
         
-        - name: 📱 Send Notification
-          if: always()
-          env:
-            TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-            TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          run: |
-            echo "📱 Sending notification..."
+    - name: 📱 Send Notification
+      if: always()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        echo "📱 Sending notification..."
             
-            STATUS="${{ job.status }}"
-            RESULTS=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+        STATUS="${{ job.status }}"
+        RESULTS=$(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
             
-            if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-              if [ "$STATUS" = "success" ]; then
-                EMOJI="✅"
-                MSG="Multi-Coin Hybrid Analysis Completed Successfully"
-                DETAILS="📊 Result files: $RESULTS\\n🔧 Hybrid SMA+EMA system operational\\n⚖️ SMA (70%) + EMA (30%) approach\\n🎯 Quality filtering: 75% + 65% thresholds"
-              else
-                EMOJI="❌"
-                MSG="Multi-Coin Hybrid Analysis Failed"  
-                DETAILS="🔍 Check workflow logs\\n🚨 System needs attention\\n📋 Artifacts available for debugging"
-              fi
+        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="✅"
+            MSG="Multi-Coin Hybrid Analysis Completed Successfully"
+            DETAILS="📊 Result files: $RESULTS\\n🔧 Hybrid SMA+EMA system operational\\n⚖️ SMA (70%) + EMA (30%) approach\\n🎯 Quality filtering: 75% + 65% thresholds"
+          else
+            EMOJI="❌"
+            MSG="Multi-Coin Hybrid Analysis Failed"  
+            DETAILS="🔍 Check workflow logs\\n🚨 System needs attention\\n📋 Artifacts available for debugging"
+          fi
               
-              MESSAGE="$EMOJI **Multi-Coin Hybrid Analyzer v${{ env.ANALYZER_VERSION }}**
+            MESSAGE="$EMOJI **Multi-Coin Hybrid Analyzer v${{ env.ANALYZER_VERSION }}**
 
             🎯 **Status:** $MSG
 
@@ -230,32 +230,32 @@ jobs:
                       echo "⚠️ Telegram credentials not configured"
                     fi
                     
-                - name: 🧹 Cleanup
-                  if: always()
-                  run: |
-            echo "🧹 Cleanup..."
+    - name: 🧹 Cleanup
+      if: always()
+      run: |
+        echo "🧹 Cleanup..."
             
-            # Archive logs
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-            [ -f trading_log.txt ] && cp trading_log.txt "logs/trading_log_$TIMESTAMP.txt"
+        # Archive logs
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          [ -f trading_log.txt ] && cp trading_log.txt "logs/trading_log_$TIMESTAMP.txt"
             
-            # Keep latest 3 results only
-            RESULT_COUNT=$(ls -t multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
-            if [ $RESULT_COUNT -gt 3 ]; then
-              echo "Removing old results (keeping 3)"
-              ls -t multicoin_hybrid_analysis_*.json | tail -n +4 | xargs rm -f
-            fi
+        # Keep latest 3 results only
+        RESULT_COUNT=$(ls -t multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l)
+          if [ $RESULT_COUNT -gt 3 ]; then
+            echo "Removing old results (keeping 3)"
+            ls -t multicoin_hybrid_analysis_*.json | tail -n +4 | xargs rm -f
+          fi
             
-            # Clean temp files
-            rm -f *.tmp *.cache ./*.pyc 2>/dev/null || true
-            rm -rf __pycache__ 2>/dev/null || true
-            rm -f process_results.py
+        # Clean temp files
+          rm -f *.tmp *.cache ./*.pyc 2>/dev/null || true
+          rm -rf __pycache__ 2>/dev/null || true
+          rm -f process_results.py
             
-            echo "📊 Final status:"
-            echo "• Results: $(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l) files"
-            echo "• Logs: $(ls logs/ 2>/dev/null | wc -l) archived" 
-            echo "• Storage: $(du -sh . 2>/dev/null | cut -f1)"
-            echo "✅ Cleanup completed"
+        echo "📊 Final status:"
+        echo "• Results: $(ls multicoin_hybrid_analysis_*.json 2>/dev/null | wc -l) files"
+        echo "• Logs: $(ls logs/ 2>/dev/null | wc -l) archived" 
+        echo "• Storage: $(du -sh . 2>/dev/null | cut -f1)"
+        echo "✅ Cleanup completed"
 
   system-health-monitor:
     name: System Health Assessment
