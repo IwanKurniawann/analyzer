@@ -17,9 +17,10 @@ class KuCoinExchange(MarketDataService, ExchangeService):
     """
     Implementasi KuCoin exchange yang ditingkatkan untuk lingkungan LIVE.
     Fokus pada penanganan error yang tangguh, koneksi yang stabil, dan dukungan proxy.
+    Kunci API sekarang bersifat opsional untuk koneksi publik saja.
     """
 
-    def __init__(self, api_key: str, api_secret: str, passphrase: str, http_proxy: Optional[str] = None, https_proxy: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None, passphrase: Optional[str] = None, http_proxy: Optional[str] = None, https_proxy: Optional[str] = None):
         self.api_key = api_key
         self.api_secret = api_secret
         self.passphrase = passphrase
@@ -27,14 +28,14 @@ class KuCoinExchange(MarketDataService, ExchangeService):
         self.https_proxy = https_proxy
         self.exchange: Optional[ccxt.kucoin] = None
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.is_public_only = not (api_key and api_secret and passphrase)
+        if self.is_public_only:
+            self.logger.warning("API keys not provided. Initializing in public-only mode. Private endpoints will fail.")
 
     async def initialize(self) -> None:
         """Inisialisasi instance bursa CCXT untuk mode LIVE dengan penanganan error dan proxy."""
         try:
             config = {
-                'apiKey': self.api_key,
-                'secret': self.api_secret,
-                'password': self.passphrase,
                 'enableRateLimit': True,
                 'timeout': 30000,
                 'options': {
@@ -43,6 +44,12 @@ class KuCoinExchange(MarketDataService, ExchangeService):
                     },
                 },
             }
+
+            # Hanya tambahkan kredensial jika semuanya tersedia
+            if not self.is_public_only:
+                config['apiKey'] = self.api_key
+                config['secret'] = self.api_secret
+                config['password'] = self.passphrase
             
             # Tambahkan konfigurasi proxy jika tersedia
             proxies = {}
@@ -56,12 +63,20 @@ class KuCoinExchange(MarketDataService, ExchangeService):
                 self.logger.info(f"🔌 Using proxies for exchange connection: {proxies}")
 
             self.exchange = ccxt.kucoin(config)
-            await self.exchange.load_markets()
-            self.logger.info("✅ KuCoin exchange initialized in LIVE mode")
+            # Muat pasar (mungkin gagal pada panggilan privat jika dalam mode publik)
+            try:
+                await self.exchange.load_markets()
+            except ccxt.AuthenticationError as auth_err:
+                if self.is_public_only:
+                    self.logger.warning(f"Could not load all market data due to public-only mode: {auth_err}")
+                else:
+                    raise auth_err
+
+            self.logger.info(f"✅ KuCoin exchange initialized. Mode: {'Public-Only' if self.is_public_only else 'Private'}")
 
         except ccxt.ExchangeError as e:
             if "unavailable in the U.S." in str(e):
-                self.logger.error("❌ Geo-restriction error from KuCoin. The server IP is likely in a restricted region (e.g., USA). Consider using a proxy.", exc_info=False)
+                self.logger.error("❌ Geo-restriction error from KuCoin. The server IP is likely in a restricted region (e.g., USA). The proxy is required.", exc_info=False)
             self.logger.error(f"❌ Failed to initialize KuCoin exchange: {e}", exc_info=True)
             if self.exchange:
                 await self.exchange.close()
@@ -129,3 +144,4 @@ class KuCoinExchange(MarketDataService, ExchangeService):
     async def get_exchange_info(self) -> Dict[str, Any]:
         if not self.exchange: raise ConnectionError("Exchange not initialized.")
         return {"name": "KuCoin", "live": True, "markets": len(self.exchange.markets)}
+
