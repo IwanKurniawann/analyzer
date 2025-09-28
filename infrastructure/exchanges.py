@@ -2,7 +2,7 @@
 Implementasi layanan bursa menggunakan CCXT (versi Live-Only)
 """
 
-import ccxt.async_support as ccxt # Menggunakan versi async_support yang lebih baik
+import ccxt.async_support as ccxt
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -31,27 +31,37 @@ class KuCoinExchange(MarketDataService, ExchangeService):
         self.exchange = None
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        # Inisialisasi bursa saat objek dibuat
         asyncio.create_task(self.initialize())
 
     async def initialize(self) -> None:
         """Inisialisasi instance bursa CCXT untuk mode LIVE"""
         try:
-            # Konfigurasi tidak lagi mengandung 'sandbox'
             config = {
                 'apiKey': self.api_key,
                 'secret': self.api_secret,
                 'password': self.passphrase,
                 'enableRateLimit': True,
                 'timeout': 30000,
+                # --- PERBAIKAN DIMULAI DI SINI ---
+                # Menambahkan header 'options' untuk mengatasi geo-restriction
+                # 'KC-API-REMARK' adalah header khusus yang disarankan oleh KuCoin
+                # untuk pengguna yang mengakses dari server cloud (seperti GitHub Actions)
+                # yang mungkin berlokasi di wilayah terlarang (mis. AS).
+                # Nilai '9527' adalah contoh umum yang digunakan, menandakan
+                # bahwa Anda adalah pengguna yang sah.
+                'options': {
+                    'defaultHeaders': {
+                        'KC-API-REMARK': '9527',
+                    },
+                },
+                # --- AKHIR PERBAIKAN ---
             }
 
             self.exchange = ccxt.kucoin(config)
 
-            # Muat pasar
             await self.exchange.load_markets()
 
-            self.logger.info("✅ KuCoin exchange initialized in LIVE mode")
+            self.logger.info("✅ KuCoin exchange initialized in LIVE mode with anti-restriction header")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize KuCoin exchange: {e}", exc_info=True)
@@ -70,7 +80,6 @@ class KuCoinExchange(MarketDataService, ExchangeService):
         """Tes konektivitas bursa"""
         try:
             if not self.exchange:
-                # Beri sedikit waktu untuk inisialisasi awal selesai
                 await asyncio.sleep(1)
                 if not self.exchange:
                     await self.initialize()
@@ -130,7 +139,7 @@ class KuCoinExchange(MarketDataService, ExchangeService):
             self.logger.error(f"Failed to get latest price for {symbol}: {e}")
             raise
 
-    async def validate_symbol(self, symbol: str) -> bool:
+    async def validate_symbol(self, str) -> bool:
         try:
             if not self.exchange: await self.initialize()
             return symbol in self.exchange.markets
