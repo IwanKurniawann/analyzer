@@ -16,12 +16,19 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python 3.12 with caching
+    - name: 🐍 Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
-        # REVISI: Menggunakan fitur caching bawaan yang lebih andal
-        cache: 'pip'
+
+    # REVISI: Kembali ke metode caching manual yang lebih eksplisit untuk stabilitas
+    - name: 📦 Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
     - name: 🧪 Install and Verify Dependencies
       run: |
@@ -41,9 +48,8 @@ jobs:
         HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
 
         # Trading Parameters
-        # REVISI: Daftar diperluas menjadi 25 pasangan trading teratas
         TRADING_PAIRS: >-
-          BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,PENGU/USDT,
+          BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,LINK/USDT,
           XRP/USDT,DOGE/USDT,AVAX/USDT,DOT/USDT,LINK/USDT,
           SHIB/USDT,TRX/USDT,LTC/USDT,BCH/USDT,UNI/USDT,
           ATOM/USDT,NEAR/USDT,INJ/USDT,MANA/USDT,SAND/USDT,
