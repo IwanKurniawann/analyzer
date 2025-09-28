@@ -38,11 +38,10 @@ async def main():
         settings = Settings()
         logger.info("🚀 Trading bot started")
 
-        # Initialize services (Dependency Injection)
+        # Initialize services (Dependency Injection) - Tanpa Kunci API
         exchange = KuCoinExchange(
-            api_key=settings.KUCOIN_API_KEY,
-            api_secret=settings.KUCOIN_API_SECRET,
-            passphrase=settings.KUCOIN_PASSPHRASE
+            http_proxy=settings.HTTP_PROXY,
+            https_proxy=settings.HTTPS_PROXY
         )
 
         telegram_service = TelegramService(
@@ -73,7 +72,7 @@ async def main():
         logger.info("✅ Trading analysis completed successfully")
 
     except Exception as e:
-        logger.error(f"❌ Application error: {e}", exc_info=True)
+        logger.error(f"❌ Application error: {e}", exc_info=False) # Keep log cleaner
         # Send error notification to Telegram
         try:
             # Menggunakan settings untuk membuat instance notifikasi darurat

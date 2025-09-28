@@ -13,12 +13,7 @@ load_dotenv()
 class Settings:
     """Centralized configuration management"""
 
-    # KuCoin API Configuration
-    KUCOIN_API_KEY: str = os.getenv("KUCOIN_API_KEY", "")
-    KUCOIN_API_SECRET: str = os.getenv("KUCOIN_API_SECRET", "")
-    KUCOIN_PASSPHRASE: str = os.getenv("KUCOIN_PASSPHRASE", "")
-
-    # Proxy Configuration
+    # Proxy Configuration (Sangat penting untuk lingkungan seperti GitHub Actions)
     HTTP_PROXY: Optional[str] = os.getenv("HTTP_PROXY")
     HTTPS_PROXY: Optional[str] = os.getenv("HTTPS_PROXY")
 
@@ -44,7 +39,6 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
     # Notification Settings
-    SEND_TEST_MESSAGE: bool = os.getenv("SEND_TEST_MESSAGE", "False").lower() == "true"
     ENABLE_NOTIFICATIONS: bool = os.getenv("ENABLE_NOTIFICATIONS", "True").lower() == "true"
 
     def __init__(self):
@@ -54,9 +48,6 @@ class Settings:
     def _validate_required_settings(self) -> None:
         """Validate that required environment variables are set"""
         required_settings = [
-            ("KUCOIN_API_KEY", self.KUCOIN_API_KEY),
-            ("KUCOIN_API_SECRET", self.KUCOIN_API_SECRET), 
-            ("KUCOIN_PASSPHRASE", self.KUCOIN_PASSPHRASE),
             ("TELEGRAM_BOT_TOKEN", self.TELEGRAM_BOT_TOKEN),
             ("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID),
         ]
@@ -71,16 +62,6 @@ class Settings:
                 f"Missing required environment variables: {', '.join(missing_settings)}\n"
                 f"Please set these variables in GitHub Secrets or .env file"
             )
-
-    def get_kucoin_config(self) -> dict:
-        """Get KuCoin exchange configuration"""
-        return {
-            "apiKey": self.KUCOIN_API_KEY,
-            "secret": self.KUCOIN_API_SECRET,
-            "password": self.KUCOIN_PASSPHRASE,
-            "enableRateLimit": True,
-            "timeout": 30000,
-        }
 
     def get_trading_config(self) -> dict:
         """Get trading parameters configuration"""
@@ -98,8 +79,7 @@ class Settings:
         return (
             f"Settings("
             f"pairs={len(self.TRADING_PAIRS)}, "
-            f"timeframe='{self.TIMEFRAME}', "
-            f"pivot_period={self.PIVOT_PERIOD}, "
-            f"atr_factor={self.ATR_FACTOR}"
+            f"timeframe='{self.TIMEFRAME}'"
             f")"
         )
+

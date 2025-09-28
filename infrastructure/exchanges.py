@@ -15,25 +15,18 @@ logger = logging.getLogger(__name__)
 
 class KuCoinExchange(MarketDataService, ExchangeService):
     """
-    Implementasi KuCoin exchange yang ditingkatkan untuk lingkungan LIVE.
+    Implementasi KuCoin exchange untuk data publik saja.
     Fokus pada penanganan error yang tangguh, koneksi yang stabil, dan dukungan proxy.
-    Kunci API sekarang bersifat opsional untuk koneksi publik saja.
     """
 
-    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None, passphrase: Optional[str] = None, http_proxy: Optional[str] = None, https_proxy: Optional[str] = None):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.passphrase = passphrase
+    def __init__(self, http_proxy: Optional[str] = None, https_proxy: Optional[str] = None):
         self.http_proxy = http_proxy
         self.https_proxy = https_proxy
         self.exchange: Optional[ccxt.kucoin] = None
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.is_public_only = not (api_key and api_secret and passphrase)
-        if self.is_public_only:
-            self.logger.warning("API keys not provided. Initializing in public-only mode. Private endpoints will fail.")
 
     async def initialize(self) -> None:
-        """Inisialisasi instance bursa CCXT untuk mode LIVE dengan penanganan error dan proxy."""
+        """Inisialisasi instance bursa CCXT untuk mode publik dengan penanganan error dan proxy."""
         try:
             config = {
                 'enableRateLimit': True,
@@ -44,12 +37,6 @@ class KuCoinExchange(MarketDataService, ExchangeService):
                     },
                 },
             }
-
-            # Hanya tambahkan kredensial jika semuanya tersedia
-            if not self.is_public_only:
-                config['apiKey'] = self.api_key
-                config['secret'] = self.api_secret
-                config['password'] = self.passphrase
             
             # Tambahkan konfigurasi proxy jika tersedia
             proxies = {}
@@ -63,20 +50,14 @@ class KuCoinExchange(MarketDataService, ExchangeService):
                 self.logger.info(f"🔌 Using proxies for exchange connection: {proxies}")
 
             self.exchange = ccxt.kucoin(config)
-            # Muat pasar (mungkin gagal pada panggilan privat jika dalam mode publik)
-            try:
-                await self.exchange.load_markets()
-            except ccxt.AuthenticationError as auth_err:
-                if self.is_public_only:
-                    self.logger.warning(f"Could not load all market data due to public-only mode: {auth_err}")
-                else:
-                    raise auth_err
+            # Muat pasar. Ini adalah titik di mana geo-restriction akan terjadi jika tidak ada proxy.
+            await self.exchange.load_markets()
 
-            self.logger.info(f"✅ KuCoin exchange initialized. Mode: {'Public-Only' if self.is_public_only else 'Private'}")
+            self.logger.info("✅ KuCoin exchange initialized in Public-Only Mode.")
 
         except ccxt.ExchangeError as e:
             if "unavailable in the U.S." in str(e):
-                self.logger.error("❌ Geo-restriction error from KuCoin. The server IP is likely in a restricted region (e.g., USA). The proxy is required.", exc_info=False)
+                self.logger.error("❌ Geo-restriction error from KuCoin. The server IP is in a restricted region (e.g., USA). A proxy is required.", exc_info=False)
             self.logger.error(f"❌ Failed to initialize KuCoin exchange: {e}", exc_info=True)
             if self.exchange:
                 await self.exchange.close()
@@ -104,7 +85,8 @@ class KuCoinExchange(MarketDataService, ExchangeService):
             self.logger.error("Cannot test connection, exchange is not initialized.")
             return False
         try:
-            await self.exchange.fetch_time()
+            # Menggunakan endpoint publik yang berbeda untuk pengujian
+            await self.exchange.fetch_status()
             return True
         except Exception as e:
             self.logger.error(f"Exchange connection test failed: {e}")
@@ -114,10 +96,12 @@ class KuCoinExchange(MarketDataService, ExchangeService):
         if not self.exchange:
             raise ConnectionError("KuCoin exchange is not initialized. Cannot fetch data.")
         try:
+            if not self.exchange.markets:
+                await self.exchange.load_markets(True)
+            
             if symbol not in self.exchange.markets:
-                await self.exchange.load_markets(True) # Coba muat ulang pasar jika simbol tidak ditemukan
-                if symbol not in self.exchange.markets:
-                    raise ValueError(f"Symbol {symbol} not found in KuCoin markets after reload")
+                raise ValueError(f"Symbol {symbol} not found in KuCoin markets after reload")
+            
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             if not ohlcv: return []
             return [MarketData(symbol=symbol, timeframe=timeframe, timestamp=datetime.fromtimestamp(i[0]/1000, tz=timezone.utc), open=i[1], high=i[2], low=i[3], close=i[4], volume=i[5]) for i in ohlcv]
@@ -126,11 +110,13 @@ class KuCoinExchange(MarketDataService, ExchangeService):
             raise
 
     async def validate_symbol(self, symbol: str) -> bool:
-        """Memvalidasi simbol dengan perbaikan bug."""
+        """Memvalidasi simbol."""
         if not self.exchange:
             self.logger.warning("Exchange not initialized, cannot validate symbol.")
             return False
         try:
+            if not self.exchange.markets:
+                await self.exchange.load_markets(True)
             return symbol in self.exchange.markets
         except Exception as e:
             self.logger.error(f"Failed to validate symbol {symbol}: {e}")
@@ -143,5 +129,5 @@ class KuCoinExchange(MarketDataService, ExchangeService):
 
     async def get_exchange_info(self) -> Dict[str, Any]:
         if not self.exchange: raise ConnectionError("Exchange not initialized.")
-        return {"name": "KuCoin", "live": True, "markets": len(self.exchange.markets)}
+        return {"name": "KuCoin", "live": True, "markets": len(self.exchange.markets) if self.exchange.markets else 0}
 

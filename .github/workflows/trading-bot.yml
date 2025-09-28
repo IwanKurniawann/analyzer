@@ -31,27 +31,25 @@ jobs:
 
     - name: 🧪 Install and Verify Dependencies
       run: |
-          # 1. Install dependencies first
           pip install --no-cache-dir -r requirements.txt
-          
-          # 2. Then, verify the installation
           echo "Verifying installations..."
           python -c "import pandas_ta as ta; print(f'✅ pandas-ta version: {ta.version}')"
           python -c "import ccxt; print(f'✅ ccxt version: {ccxt.__version__}')"
 
     - name: 🚀 Run trading analysis
       env:
-        # KuCoin API Configuration
-        KUCOIN_API_KEY: ${{ secrets.KUCOIN_API_KEY }}
-        KUCOIN_API_SECRET: ${{ secrets.KUCOIN_API_SECRET }}
-        KUCOIN_PASSPHRASE: ${{ secrets.KUCOIN_PASSPHRASE }}
-
         # Telegram Configuration
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-        # Trading Parameters (SOL/USDT duplicate removed)
-        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,PENGU/USDT,LINK/USDT"
+        # (PENTING) Proxy Configuration to bypass geo-restrictions
+        # Sediakan URL server proxy jika runner Anda berada di wilayah yang dibatasi (seperti AS)
+        # Contoh: http://user:pass@host:port
+        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+        HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+
+        # Trading Parameters
+        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,MATIC/USDT"
         TIMEFRAME: "1h"
         PIVOT_PERIOD: "2"
         ATR_FACTOR: "3.0"
@@ -71,3 +69,4 @@ jobs:
         name: trading-bot-logs
         path: trading_bot.log
         retention-days: 7
+
