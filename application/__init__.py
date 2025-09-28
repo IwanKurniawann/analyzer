@@ -1,14 +1,9 @@
 """
-Infrastructure layer - External services implementations
-Concrete implementations of domain services
+Application layer - Business logic and use cases
 """
 
-from .exchanges import *
-from .telegram_service import *
-from .technical_analysis import *
+from .use_cases import TradingUseCase
 
 __all__ = [
-    "KuCoinExchange",
-    "TelegramService", 
-    "TechnicalAnalysisService",
+    "TradingUseCase",
 ]
