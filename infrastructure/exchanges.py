@@ -16,18 +16,20 @@ logger = logging.getLogger(__name__)
 class KuCoinExchange(MarketDataService, ExchangeService):
     """
     Implementasi KuCoin exchange yang ditingkatkan untuk lingkungan LIVE.
-    Fokus pada penanganan error yang tangguh dan koneksi yang stabil.
+    Fokus pada penanganan error yang tangguh, koneksi yang stabil, dan dukungan proxy.
     """
 
-    def __init__(self, api_key: str, api_secret: str, passphrase: str):
+    def __init__(self, api_key: str, api_secret: str, passphrase: str, http_proxy: Optional[str] = None, https_proxy: Optional[str] = None):
         self.api_key = api_key
         self.api_secret = api_secret
         self.passphrase = passphrase
-        self.exchange: Optional[ccxt.kucoin] = None  # Menambahkan type hint
+        self.http_proxy = http_proxy
+        self.https_proxy = https_proxy
+        self.exchange: Optional[ccxt.kucoin] = None
         self.logger = logging.getLogger(self.__class__.__name__)
 
     async def initialize(self) -> None:
-        """Inisialisasi instance bursa CCXT untuk mode LIVE dengan penanganan error."""
+        """Inisialisasi instance bursa CCXT untuk mode LIVE dengan penanganan error dan proxy."""
         try:
             config = {
                 'apiKey': self.api_key,
@@ -37,22 +39,40 @@ class KuCoinExchange(MarketDataService, ExchangeService):
                 'timeout': 30000,
                 'options': {
                     'defaultHeaders': {
-                        'KC-API-REMARK': '9527',  # Header anti-pembatasan geografis
+                        'KC-API-REMARK': '9527',
                     },
                 },
             }
+            
+            # Tambahkan konfigurasi proxy jika tersedia
+            proxies = {}
+            if self.http_proxy:
+                proxies['http'] = self.http_proxy
+            if self.https_proxy:
+                proxies['https'] = self.https_proxy
+            
+            if proxies:
+                config['proxies'] = proxies
+                self.logger.info(f"🔌 Using proxies for exchange connection: {proxies}")
 
             self.exchange = ccxt.kucoin(config)
             await self.exchange.load_markets()
-            self.logger.info("✅ KuCoin exchange initialized in LIVE mode with anti-restriction header")
+            self.logger.info("✅ KuCoin exchange initialized in LIVE mode")
 
-        except Exception as e:
+        except ccxt.ExchangeError as e:
+            if "unavailable in the U.S." in str(e):
+                self.logger.error("❌ Geo-restriction error from KuCoin. The server IP is likely in a restricted region (e.g., USA). Consider using a proxy.", exc_info=False)
             self.logger.error(f"❌ Failed to initialize KuCoin exchange: {e}", exc_info=True)
-            # Pastikan self.exchange di-reset jika gagal
             if self.exchange:
                 await self.exchange.close()
             self.exchange = None
-            raise  # Melemparkan kembali exception agar proses utama berhenti
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ An unexpected error occurred during KuCoin initialization: {e}", exc_info=True)
+            if self.exchange:
+                await self.exchange.close()
+            self.exchange = None
+            raise
 
     async def close(self) -> None:
         """Menutup koneksi bursa dengan aman."""
@@ -79,9 +99,10 @@ class KuCoinExchange(MarketDataService, ExchangeService):
         if not self.exchange:
             raise ConnectionError("KuCoin exchange is not initialized. Cannot fetch data.")
         try:
-            # ... (logika get_ohlcv_data tetap sama)
             if symbol not in self.exchange.markets:
-                raise ValueError(f"Symbol {symbol} not found in KuCoin markets")
+                await self.exchange.load_markets(True) # Coba muat ulang pasar jika simbol tidak ditemukan
+                if symbol not in self.exchange.markets:
+                    raise ValueError(f"Symbol {symbol} not found in KuCoin markets after reload")
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             if not ohlcv: return []
             return [MarketData(symbol=symbol, timeframe=timeframe, timestamp=datetime.fromtimestamp(i[0]/1000, tz=timezone.utc), open=i[1], high=i[2], low=i[3], close=i[4], volume=i[5]) for i in ohlcv]
@@ -100,8 +121,6 @@ class KuCoinExchange(MarketDataService, ExchangeService):
             self.logger.error(f"Failed to validate symbol {symbol}: {e}")
             return False
             
-    # Metode lain seperti get_latest_price dan get_exchange_info tetap sama
-    # namun akan mendapat manfaat dari pemeriksaan 'if not self.exchange'
     async def get_latest_price(self, symbol: str) -> float:
         if not self.exchange: raise ConnectionError("Exchange not initialized.")
         ticker = await self.exchange.fetch_ticker(symbol)
@@ -110,4 +129,3 @@ class KuCoinExchange(MarketDataService, ExchangeService):
     async def get_exchange_info(self) -> Dict[str, Any]:
         if not self.exchange: raise ConnectionError("Exchange not initialized.")
         return {"name": "KuCoin", "live": True, "markets": len(self.exchange.markets)}
-
