@@ -130,7 +130,7 @@ class TechnicalAnalysisService(TradingAnalysisService):
             price=current_price,
             supertrend_value=current_data["supertrend"],
             trend_direction=current_trend,
-            confidence=0.75, # Contoh nilai kepercayaan
+            confidence=0.70, # Contoh nilai kepercayaan
             stop_loss=current_data["supertrend"] if signal_type == SignalType.BUY else None,
             take_profit=None,
         )
@@ -191,11 +191,10 @@ class TechnicalAnalysisService(TradingAnalysisService):
                 signal=None,
                 analysis_duration_ms=(datetime.now() - start_time).total_seconds() * 1000,
             )
-
         return AnalysisResult(
             symbol=symbol,
             timeframe=timeframe,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.utc + timedelta(hours=7))   ,
             market_data=current_market_data,
             indicator_data=indicator_data,
             signal=signal,
