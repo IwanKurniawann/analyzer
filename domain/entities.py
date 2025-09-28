@@ -4,7 +4,7 @@ Tidak memiliki dependencies ke layer lain
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
@@ -59,7 +59,7 @@ class IndicatorData:
     supertrend: Optional[float] = None
     trend_direction: TrendDirection = TrendDirection.NEUTRAL
 
-    # Support/Resistance
+    # REVISI: Tambahkan level S/R dinamis
     support_level: Optional[float] = None
     resistance_level: Optional[float] = None
 
@@ -83,11 +83,14 @@ class TradingSignal:
     trend_direction: TrendDirection
     confidence: float = 0.0
 
-    # Risk Management
+    # REVISI: Menambahkan detail manajemen risiko
+    entry_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
-
-    # Additional Context
+    
+    # Konteks tambahan untuk analisis
+    support_level: Optional[float] = None
+    resistance_level: Optional[float] = None
     timeframe: str = "1h"
     indicator_values: Optional[Dict[str, float]] = None
 
@@ -120,8 +123,11 @@ class TradingSignal:
             "supertrend_value": self.supertrend_value,
             "trend_direction": self.trend_direction.value,
             "confidence": self.confidence,
+            "entry_price": self.entry_price,
             "stop_loss": self.stop_loss,
             "take_profit": self.take_profit,
+            "support_level": self.support_level,
+            "resistance_level": self.resistance_level,
             "timeframe": self.timeframe,
             "indicator_values": self.indicator_values,
         }
@@ -151,12 +157,13 @@ class NotificationMessage:
         }
 
         emoji = emoji_map.get(self.message_type.lower(), "📊")
+        
+        # REVISI: Menggunakan zona waktu WIB (UTC+7)
+        wib_tz = timezone(timedelta(hours=7))
+        time_str = self.timestamp.astimezone(wib_tz).strftime("%d-%m-%Y %H:%M WIB")
 
         formatted_message = f"{emoji} <b>{self.subject}</b>\n\n{self.content}"
-
-        # Add timestamp
-        time_str = self.timestamp.strftime("%Y-%m-%d %H:%M UTC")
-        formatted_message += f"\n\n⏰ <i>{time_str}</i>"
+        formatted_message += f"\n\n<pre>⏰ {time_str}</pre>"
 
         return formatted_message
 
