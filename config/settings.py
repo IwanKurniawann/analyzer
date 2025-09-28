@@ -17,6 +17,7 @@ class Settings:
     KUCOIN_API_KEY: str = os.getenv("KUCOIN_API_KEY", "")
     KUCOIN_API_SECRET: str = os.getenv("KUCOIN_API_SECRET", "")
     KUCOIN_PASSPHRASE: str = os.getenv("KUCOIN_PASSPHRASE", "")
+    # Menghapus KUCOIN_SANDBOX
 
     # Telegram Configuration
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")

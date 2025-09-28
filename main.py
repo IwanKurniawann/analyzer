@@ -38,6 +38,7 @@ async def main():
         logger.info("🚀 Trading bot started")
 
         # Initialize services (Dependency Injection)
+        # Menghapus parameter 'sandbox'
         exchange = KuCoinExchange(
             api_key=settings.KUCOIN_API_KEY,
             api_secret=settings.KUCOIN_API_SECRET,
@@ -72,13 +73,17 @@ async def main():
         logger.error(f"❌ Application error: {e}", exc_info=True)
         # Send error notification to Telegram
         try:
-            error_telegram = TelegramService(
-                token=Settings().TELEGRAM_BOT_TOKEN,
-                chat_id=Settings().TELEGRAM_CHAT_ID
-            )
-            await error_telegram.send_message(f"🚨 Bot Error: {str(e)}")
-        except:
-            pass
+            # Perbaikan kecil: Gunakan telegram_service yang sudah ada jika tersedia
+            if 'telegram_service' in locals():
+                await telegram_service.send_error_notification(f"🚨 Bot Error: {str(e)}")
+            else:
+                error_telegram = TelegramService(
+                    token=Settings().TELEGRAM_BOT_TOKEN,
+                    chat_id=Settings().TELEGRAM_CHAT_ID
+                )
+                await error_telegram.send_error_notification(f"🚨 Bot Error: {str(e)}")
+        except Exception as telegram_err:
+            logger.error(f"Failed to send final error notification: {telegram_err}")
         sys.exit(1)
 
     finally:
