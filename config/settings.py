@@ -17,7 +17,6 @@ class Settings:
     KUCOIN_API_KEY: str = os.getenv("KUCOIN_API_KEY", "")
     KUCOIN_API_SECRET: str = os.getenv("KUCOIN_API_SECRET", "")
     KUCOIN_PASSPHRASE: str = os.getenv("KUCOIN_PASSPHRASE", "")
-    KUCOIN_SANDBOX: bool = os.getenv("KUCOIN_SANDBOX", "True").lower() == "true"
 
     # Telegram Configuration
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -75,7 +74,6 @@ class Settings:
             "apiKey": self.KUCOIN_API_KEY,
             "secret": self.KUCOIN_API_SECRET,
             "password": self.KUCOIN_PASSPHRASE,
-            "sandbox": self.KUCOIN_SANDBOX,
             "enableRateLimit": True,
             "timeout": 30000,
         }
@@ -95,7 +93,6 @@ class Settings:
         """String representation (safe - no secrets)"""
         return (
             f"Settings("
-            f"sandbox={self.KUCOIN_SANDBOX}, "
             f"pairs={len(self.TRADING_PAIRS)}, "
             f"timeframe='{self.TIMEFRAME}', "
             f"pivot_period={self.PIVOT_PERIOD}, "

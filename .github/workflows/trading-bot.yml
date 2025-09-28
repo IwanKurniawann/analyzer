@@ -45,7 +45,6 @@ jobs:
         KUCOIN_API_KEY: ${{ secrets.KUCOIN_API_KEY }}
         KUCOIN_API_SECRET: ${{ secrets.KUCOIN_API_SECRET }}
         KUCOIN_PASSPHRASE: ${{ secrets.KUCOIN_PASSPHRASE }}
-        KUCOIN_SANDBOX: "True"
 
         # Telegram Configuration
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

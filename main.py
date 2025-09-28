@@ -41,8 +41,7 @@ async def main():
         exchange = KuCoinExchange(
             api_key=settings.KUCOIN_API_KEY,
             api_secret=settings.KUCOIN_API_SECRET,
-            passphrase=settings.KUCOIN_PASSPHRASE,
-            sandbox=settings.KUCOIN_SANDBOX
+            passphrase=settings.KUCOIN_PASSPHRASE
         )
 
         telegram_service = TelegramService(
