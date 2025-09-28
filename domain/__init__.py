@@ -1,14 +1,36 @@
 """
-Infrastructure layer - External services implementations
-Concrete implementations of domain services
+Domain layer - Core business logic, entities, and service interfaces.
+This layer should have no dependencies on other layers.
 """
 
-from .exchanges import *
-from .telegram_service import *
-from .technical_analysis import *
+from .entities import (
+    MarketData,
+    IndicatorData,
+    TradingSignal,
+    NotificationMessage,
+    AnalysisResult,
+    SignalType,
+    TrendDirection,
+)
+from .services import (
+    MarketDataService,
+    TradingAnalysisService,
+    NotificationService,
+    ExchangeService,
+)
 
 __all__ = [
-    "KuCoinExchange",
-    "TelegramService", 
-    "TechnicalAnalysisService",
+    # Entities
+    "MarketData",
+    "IndicatorData",
+    "TradingSignal",
+    "NotificationMessage",
+    "AnalysisResult",
+    "SignalType",
+    "TrendDirection",
+    # Services (Abstract Interfaces)
+    "MarketDataService",
+    "TradingAnalysisService",
+    "NotificationService",
+    "ExchangeService",
 ]
