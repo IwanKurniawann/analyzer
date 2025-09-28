@@ -21,7 +21,6 @@ jobs:
       with:
         python-version: '3.12'
 
-    # REVISI: Kembali ke metode caching manual yang lebih eksplisit untuk stabilitas
     - name: 📦 Cache dependencies
       uses: actions/cache@v4
       with:
@@ -32,7 +31,8 @@ jobs:
 
     - name: 🧪 Install and Verify Dependencies
       run: |
-          pip install --no-cache-dir -r requirements.txt
+          # REVISI: Menghapus flag --no-cache-dir untuk memungkinkan caching
+          pip install -r requirements.txt
           echo "Verifying installations..."
           python -c "import pandas_ta as ta; print(f'✅ pandas-ta version: {ta.version}')"
           python -c "import ccxt; print(f'✅ ccxt version: {ccxt.__version__}')"
