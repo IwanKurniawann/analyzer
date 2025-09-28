@@ -41,7 +41,13 @@ jobs:
         HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
 
         # Trading Parameters
-        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,LINK/USDT,PENGU/USDT"
+        # REVISI: Daftar diperluas menjadi 25 pasangan trading teratas
+        TRADING_PAIRS: >-
+          BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,PENGU/USDT,
+          XRP/USDT,DOGE/USDT,AVAX/USDT,DOT/USDT,LINK/USDT,
+          SHIB/USDT,TRX/USDT,LTC/USDT,BCH/USDT,UNI/USDT,
+          ATOM/USDT,NEAR/USDT,FTM/USDT,MANA/USDT,SAND/USDT,
+          APE/USDT,ETC/USDT,XLM/USDT,ALGO/USDT,VET/USDT
         TIMEFRAME: "1h"
         PIVOT_PERIOD: "2"
         ATR_FACTOR: "3.0"
