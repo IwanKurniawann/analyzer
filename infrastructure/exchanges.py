@@ -80,8 +80,12 @@ class KuCoinExchange(MarketDataService, ExchangeService):
                 await self.initialize()
 
             # Test by fetching server time
-            await self.exchange.fetch_time()
-            return True
+            if self.exchange:
+                await self.exchange.fetch_time()
+                return True
+            else:
+                self.logger.error("Exchange not initialized")
+                return False
 
         except Exception as e:
             self.logger.error(f"Exchange connection test failed: {e}")
@@ -92,6 +96,10 @@ class KuCoinExchange(MarketDataService, ExchangeService):
         try:
             if not self.exchange:
                 await self.initialize()
+
+            if not self.exchange:
+                self.logger.error("Exchange is not initialized. Cannot get info.")
+                return {}
 
             info = {
                 'exchange_name': 'KuCoin',
