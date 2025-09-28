@@ -55,7 +55,7 @@ jobs:
           ATOM/USDT,NEAR/USDT,INJ/USDT,MANA/USDT,SAND/USDT,
           APE/USDT,ETC/USDT,XLM/USDT,ALGO/USDT,KAITO/USDT
         TIMEFRAME: "4h"
-        PIVOT_PERIOD: "1"
+        PIVOT_PERIOD: "5"
         ATR_FACTOR: "1.0"
         ATR_PERIOD: "5"
 
