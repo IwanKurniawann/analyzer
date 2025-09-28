@@ -57,7 +57,7 @@ jobs:
         TIMEFRAME: "4h"
         PIVOT_PERIOD: "1"
         ATR_FACTOR: "1.0"
-        ATR_PERIOD: "1"
+        ATR_PERIOD: "5"
 
         # Settings
         LOG_LEVEL: "INFO"
