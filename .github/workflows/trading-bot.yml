@@ -54,10 +54,10 @@ jobs:
           SHIB/USDT,TRX/USDT,LTC/USDT,BCH/USDT,UNI/USDT,
           ATOM/USDT,NEAR/USDT,INJ/USDT,MANA/USDT,SAND/USDT,
           APE/USDT,ETC/USDT,XLM/USDT,ALGO/USDT,VET/USDT
-        TIMEFRAME: "1h"
-        PIVOT_PERIOD: "2"
-        ATR_FACTOR: "3.0"
-        ATR_PERIOD: "10"
+        TIMEFRAME: "4h"
+        PIVOT_PERIOD: "1"
+        ATR_FACTOR: "1.0"
+        ATR_PERIOD: "1"
 
         # Settings
         LOG_LEVEL: "INFO"
