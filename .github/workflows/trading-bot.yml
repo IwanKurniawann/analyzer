@@ -16,18 +16,12 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python 3.12
+    - name: 🐍 Set up Python 3.12 with caching
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
-
-    - name: 📦 Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        # REVISI: Menggunakan fitur caching bawaan yang lebih andal
+        cache: 'pip'
 
     - name: 🧪 Install and Verify Dependencies
       run: |
@@ -43,13 +37,11 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
         # (PENTING) Proxy Configuration to bypass geo-restrictions
-        # Sediakan URL server proxy jika runner Anda berada di wilayah yang dibatasi (seperti AS)
-        # Contoh: http://user:pass@host:port
         HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
         HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
 
         # Trading Parameters
-        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,PENGU/USDT,LINK/USDT"
+        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,MATIC/USDT"
         TIMEFRAME: "1h"
         PIVOT_PERIOD: "2"
         ATR_FACTOR: "3.0"
