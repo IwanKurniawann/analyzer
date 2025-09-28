@@ -1,0 +1,69 @@
+name: 🤖 Trading Bot - Pivot Point SuperTrend
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  trading-analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: 🔧 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 🚀 Run trading analysis
+      env:
+        # KuCoin API Configuration
+        KUCOIN_API_KEY: ${{ secrets.KUCOIN_API_KEY }}
+        KUCOIN_API_SECRET: ${{ secrets.KUCOIN_API_SECRET }}
+        KUCOIN_PASSPHRASE: ${{ secrets.KUCOIN_PASSPHRASE }}
+        KUCOIN_SANDBOX: "True"
+
+        # Telegram Configuration
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+        # Trading Parameters
+        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,MATIC/USDT"
+        TIMEFRAME: "1h"
+        PIVOT_PERIOD: "2"
+        ATR_FACTOR: "3.0"
+        ATR_PERIOD: "10"
+
+        # Settings
+        LOG_LEVEL: "INFO"
+        ENABLE_NOTIFICATIONS: "True"
+
+      run: |
+        python main.py
+
+    - name: 📋 Upload logs (if failed)
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: trading-bot-logs
+        path: trading_bot.log
+        retention-days: 7
