@@ -49,7 +49,7 @@ jobs:
         HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
 
         # Trading Parameters
-        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,MATIC/USDT"
+        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,PENGU/USDT,LINK/USDT"
         TIMEFRAME: "1h"
         PIVOT_PERIOD: "2"
         ATR_FACTOR: "3.0"
