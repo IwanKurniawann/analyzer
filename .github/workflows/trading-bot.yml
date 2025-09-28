@@ -47,7 +47,7 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
         # Trading Parameters
-        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,MATIC/USDT"
+        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,SOL/USDT"
         TIMEFRAME: "1h"
         PIVOT_PERIOD: "2"
         ATR_FACTOR: "3.0"
@@ -62,7 +62,7 @@ jobs:
 
     - name: 📋 Upload logs (if failed)
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: trading-bot-logs
         path: trading_bot.log
