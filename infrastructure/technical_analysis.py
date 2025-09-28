@@ -7,6 +7,9 @@ import pandas as pd
 import logging
 from typing import List, Dict, Optional
 
+# REVISI: Menambahkan impor pandas_ta yang hilang
+import pandas_ta as ta
+
 from domain.entities import (
     MarketData,
     IndicatorData,
@@ -82,6 +85,7 @@ class TechnicalAnalysisService(TradingAnalysisService):
         self, df: pd.DataFrame, atr_period: int, atr_factor: float
     ) -> pd.DataFrame:
         """Menghitung SuperTrend dan arah tren."""
+        # Baris ini sekarang akan berfungsi karena pandas_ta sudah diimpor
         supertrend_df = df.ta.supertrend(length=atr_period, multiplier=atr_factor)
         df["supertrend"] = supertrend_df[f"SUPERT_{atr_period}_{atr_factor}"]
         df["supertrend_direction"] = supertrend_df[f"SUPERTd_{atr_period}_{atr_factor}"]
