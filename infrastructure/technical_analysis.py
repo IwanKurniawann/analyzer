@@ -69,9 +69,10 @@ class TechnicalAnalysisService(TradingAnalysisService):
         df["pivot_high"] = df["high"].rolling(window=period * 2 + 1, center=True).max()
         df["pivot_low"] = df["low"].rolling(window=period * 2 + 1, center=True).min()
         
-        # Mengisi nilai NaN di awal dan akhir
-        df["pivot_high"].fillna(method='bfill', inplace=True)
-        df["pivot_low"].fillna(method='bfill', inplace=True)
+        # REVISI: Menggunakan metode modern dan aman untuk mengisi nilai NaN
+        # Menghindari ChainedAssignmentError dan FutureWarning
+        df["pivot_high"] = df["pivot_high"].bfill()
+        df["pivot_low"] = df["pivot_low"].bfill()
         return df
 
     async def calculate_supertrend(
@@ -91,7 +92,8 @@ class TechnicalAnalysisService(TradingAnalysisService):
         df["supertrend_direction"] = supertrend_df[f"SUPERTd_{atr_period}_{atr_factor}"]
         df["atr"] = df.ta.atr(length=atr_period) # Hitung ATR secara terpisah untuk data tambahan
         
-        df.fillna(method='bfill', inplace=True) # Isi nilai NaN
+        # REVISI: Menggunakan metode modern untuk mengisi nilai NaN di seluruh DataFrame
+        df = df.bfill()
         return df
 
     async def generate_signal(
