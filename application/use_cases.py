@@ -5,7 +5,7 @@ Orchestrates domain services dan infrastructure services
 
 import logging
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from domain.entities import AnalysisResult, TradingSignal
@@ -69,16 +69,17 @@ class TradingUseCase:
             tasks = [self._analyze_and_notify_single_pair(pair.strip()) for pair in self.settings.TRADING_PAIRS]
             analysis_results = await asyncio.gather(*tasks, return_exceptions=True)
 
+            # Titik pusat penanganan kesalahan untuk semua pasangan
             for i, result in enumerate(analysis_results):
                 pair = self.settings.TRADING_PAIRS[i].strip()
                 if isinstance(result, Exception):
                     error_msg = f"Error processing {pair}: {result}"
-                    self.logger.error(error_msg, exc_info=result)
+                    self.logger.error(error_msg, exc_info=False) # Cukup log pesan, traceback sudah ditangkap
                     results["errors"].append(error_msg)
                     await self._send_error_notification(pair, str(result))
                 elif result and result.has_signal():
                     results["signals_generated"] += 1
-                if result:
+                if not isinstance(result, Exception):
                     results["pairs_analyzed"] += 1
         
         except Exception as e:
@@ -96,38 +97,36 @@ class TradingUseCase:
             return results
 
     async def _analyze_and_notify_single_pair(self, pair: str) -> Optional[AnalysisResult]:
-        """Menganalisis dan memberitahu untuk satu pasangan"""
+        """
+        Menganalisis dan memberitahu untuk satu pasangan.
+        REVISI: Blok try-except dihapus untuk sentralisasi penanganan error.
+        """
         self.logger.info(f"📊 Analyzing {pair}")
-        try:
-            analysis_result = await self._analyze_single_pair(pair)
+        
+        analysis_result = await self._analyze_single_pair(pair)
 
-            if analysis_result and analysis_result.has_signal():
-                self.logger.info(
-                    f"🚨 {analysis_result.signal.signal_type.value} SIGNAL: "
-                    f"{pair} @ {analysis_result.signal.price:.4f}"
-                )
-                await self._send_signal_notification(analysis_result.signal)
-            elif analysis_result:
-                self.logger.info(f"➡️ {pair}: No signal (HOLD)")
-            
-            return analysis_result
-        except Exception as e:
-            self.logger.error(f"Error analyzing {pair}: {e}", exc_info=True)
-            await self._send_error_notification(pair, str(e))
-            return None
+        if analysis_result and analysis_result.has_signal():
+            self.logger.info(
+                f"🚨 {analysis_result.signal.signal_type.value} SIGNAL: "
+                f"{pair} @ {analysis_result.signal.price:.4f}"
+            )
+            await self._send_signal_notification(analysis_result.signal)
+        elif analysis_result:
+            self.logger.info(f"➡️ {pair}: No signal (HOLD)")
+        
+        return analysis_result
 
     async def _analyze_single_pair(self, symbol: str) -> Optional[AnalysisResult]:
         """Menganalisis satu pasangan trading dengan konfirmasi multi-timeframe"""
         
-        # Ambil data untuk kedua timeframe secara bersamaan
         primary_data_task = self.exchange.get_ohlcv_data(
             symbol=symbol,
-            timeframe=self.settings.PRIMARY_TIMEFRAME, # REVISI: Menggunakan PRIMARY_TIMEFRAME
+            timeframe=self.settings.PRIMARY_TIMEFRAME,
             limit=self.settings.OHLCV_LIMIT
         )
         higher_data_task = self.exchange.get_ohlcv_data(
             symbol=symbol,
-            timeframe=self.settings.HIGHER_TIMEFRAME, # REVISI: Menggunakan HIGHER_TIMEFRAME
+            timeframe=self.settings.HIGHER_TIMEFRAME,
             limit=self.settings.OHLCV_LIMIT
         )
         
@@ -138,7 +137,6 @@ class TradingUseCase:
         if not higher_market_data or len(higher_market_data) < 20:
             raise ValueError(f"Insufficient higher timeframe data for {symbol}")
 
-        # Lakukan analisis teknis dengan kedua set data
         analysis_result = await self.technical_analysis.analyze_market(
             symbol=symbol,
             primary_market_data=primary_market_data,
