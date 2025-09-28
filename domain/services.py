@@ -37,7 +37,6 @@ class MarketDataService(ABC):
 class TradingAnalysisService(ABC):
     """Abstract service untuk analisis teknikal"""
 
-    # Metode lain tetap sama...
     @abstractmethod
     async def calculate_pivot_points(self, df, period: int = 2):
         pass
@@ -122,3 +121,4 @@ class ExchangeService(ABC):
     @abstractmethod
     async def get_exchange_info(self) -> Dict[str, Any]:
         pass
+
