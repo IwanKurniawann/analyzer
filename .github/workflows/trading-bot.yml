@@ -3,7 +3,7 @@ name: 🤖 Trading Bot - Pivot Point SuperTrend
 on:
   schedule:
     # Run every minute
-    - cron: '0 0,3,7,11,15,19,23 * * *'
+    - cron: '0 0,4,8,12,16,20 * * *'
 
   workflow_dispatch:
     # Allow manual trigger
