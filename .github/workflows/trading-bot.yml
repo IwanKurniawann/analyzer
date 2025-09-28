@@ -50,8 +50,8 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-        # Trading Parameters
-        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,ADA/USDT,SOL/USDT"
+        # Trading Parameters (SOL/USDT duplicate removed)
+        TRADING_PAIRS: "BTC/USDT,ETH/USDT,SOL/USDT,PENGU/USDT,LINK/USDT"
         TIMEFRAME: "1h"
         PIVOT_PERIOD: "2"
         ATR_FACTOR: "3.0"
