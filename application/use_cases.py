@@ -6,7 +6,7 @@ Orchestrates domain services dan infrastructure services
 import logging
 import asyncio
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union, Protocol
 
 from domain.entities import AnalysisResult, TradingSignal
 from domain.services import (
@@ -18,6 +18,19 @@ from domain.services import (
 
 logger = logging.getLogger(__name__)
 
+class InitializableService(Protocol):
+    async def initialize(self) -> None:
+        """Initialize the service"""
+        pass
+
+    async def close(self) -> None:
+        """Close the service"""
+        pass
+
+    async def get_ohlcv_data(self, symbol: str, timeframe: str, limit: int) -> List[dict]:
+        """Fetch OHLCV data for a given symbol and timeframe"""
+        pass
+
 class TradingUseCase:
     """
     Use case utama untuk analisis trading dan notifikasi
@@ -26,7 +39,7 @@ class TradingUseCase:
 
     def __init__(
         self,
-        exchange: MarketDataService and ExchangeService,
+        exchange: InitializableService,
         telegram_service: NotificationService,
         technical_analysis: TradingAnalysisService,
         settings: Any,
@@ -77,9 +90,9 @@ class TradingUseCase:
                     self.logger.error(error_msg, exc_info=False) # Cukup log pesan, traceback sudah ditangkap
                     results["errors"].append(error_msg)
                     await self._send_error_notification(pair, str(result))
-                elif result and result.has_signal():
-                    results["signals_generated"] += 1
-                if not isinstance(result, Exception):
+                elif isinstance(result, AnalysisResult):
+                    if result.has_signal() and result.signal:
+                        results["signals_generated"] += 1
                     results["pairs_analyzed"] += 1
         
         except Exception as e:
@@ -105,7 +118,7 @@ class TradingUseCase:
         
         analysis_result = await self._analyze_single_pair(pair)
 
-        if analysis_result and analysis_result.has_signal():
+        if analysis_result and analysis_result.has_signal() and analysis_result.signal:
             self.logger.info(
                 f"🚨 {analysis_result.signal.signal_type.value} SIGNAL: "
                 f"{pair} @ {analysis_result.signal.price:.4f}"
